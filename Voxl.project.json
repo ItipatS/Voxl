@@ -1,0 +1,31 @@
+{
+  "name": "Voxl",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Packages": {
+        "$path": "Packages"
+      },
+      "clientSystems": {
+        "$path": "clientSystems"
+      },
+      "ecs": {
+        "$path": "src/jecs.luau"
+      },
+      "std": {
+        "$path": "src/std"
+      }
+    },
+    "ServerScriptService": {
+      "$path": "src/Server"
+    },
+    "StarterGui": {
+      "$path": "src/StarterGui"
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "$path": "src/Client"
+      }
+    }
+  }
+}

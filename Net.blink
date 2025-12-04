@@ -1,0 +1,18 @@
+option ClientOutput = "src/Shared/net.luau"
+option ServerOutput = "src/Server/net.luau"
+
+struct ChunkSurface {
+    cx: i16,
+    cz: i16,
+    -- 16 * 16 = 256 entries, row-major (z rows, x columns)
+    heights: vector<u16>,
+    biomes:  vector<u8>,
+}
+
+event ChunkSurfaceStream {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Poll: true,          -- like SpawnMob, we’ll Iter() on client
+    Data: ChunkSurface
+}
