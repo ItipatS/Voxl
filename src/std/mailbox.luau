@@ -2,7 +2,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local std = ReplicatedStorage.std
 -- Mailbox.lua (singleton)
 local world = require(std.world)
-local C     = require(std.components)
 
 local M = { sys = nil, bufByComp = {} }  -- one global mailbox
 

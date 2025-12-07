@@ -1,18 +1,17 @@
 option ClientOutput = "src/std/ClientNet.luau"
 option ServerOutput = "src/Server/ServerNet.luau"
 
-struct ChunkSurface {
+map block = { [u32]: u8 }
+
+struct ChunkFull {
     cx: i16,
     cz: i16,
-    -- 16 * 16 = 256 entries, row-major (z rows, x columns)
-    heights: vector<u16>,
-    biomes:  vector<u8>,
+    blocks: block
 }
 
-event ChunkSurfaceStream {
+event ChunkFullStream {
     From: Server,
     Type: Reliable,
     Call: SingleSync,
-    Poll: true,          -- like SpawnMob, we’ll Iter() on client
-    Data: ChunkSurface
+    Data: ChunkFull[]
 }

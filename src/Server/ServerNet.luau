@@ -158,27 +158,46 @@ local Queue: any = {
 
 local SerdesEvent = "?"
 local SerdesThread: thread?
-export type ChunkSurface = { cx: number, cz: number, heights: Vector3, biomes: Vector3 }
-local function WriteEVENT_ChunkSurfaceStream(Value: { cx: number, cz: number, heights: Vector3, biomes: Vector3 }): ()
-	-- Allocate BLOCK: 14 bytes
-	local BLOCK_START = Allocate(14)
+export type block = {[number]: number}
+export type ChunkFull = { cx: number, cz: number, blocks: {[number]: number} }
+local function WriteEVENT_ChunkFullStream(Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
+	-- Allocate BLOCK: 3 bytes
+	local BLOCK_START = Allocate(3)
 	buffer.writeu8(SendBuffer, BLOCK_START + 0, 0)
-	buffer.writei16(SendBuffer, BLOCK_START + 1, Value.cx)
-	buffer.writei16(SendBuffer, BLOCK_START + 3, Value.cz)
-	local Vector = Value.heights
-	buffer.writeu16(SendBuffer, BLOCK_START + 5, Vector.X)
-	buffer.writeu16(SendBuffer, BLOCK_START + 7, Vector.Y)
-	buffer.writeu16(SendBuffer, BLOCK_START + 9, Vector.Z)
-	local Vector = Value.biomes
-	buffer.writeu8(SendBuffer, BLOCK_START + 11, Vector.X)
-	buffer.writeu8(SendBuffer, BLOCK_START + 12, Vector.Y)
-	buffer.writeu8(SendBuffer, BLOCK_START + 13, Vector.Z)
+	-- START ARRAY
+	buffer.writeu16(SendBuffer, BLOCK_START + 1, #Value)
+		-- Allocate BLOCK: 6 bytes
+	local ARRAY_START_1 = Allocate(6 * #Value)
+	for Index = 1, #Value do
+		local Item_1 = Value[Index]
+		-- Allocate 2
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		buffer.writei16(SendBuffer, OPERATION_OFFSET_0, Item_1.cx)
+		-- Allocate 2
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		buffer.writei16(SendBuffer, OPERATION_OFFSET_1, Item_1.cz)
+		-- Allocate 2
+		local OPERATION_OFFSET_2 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		local Elements_2 = 0
+		for Key_2, Element_2 in Item_1.blocks do
+			Elements_2 += 1
+			local OFFSET_0 = Allocate(4)
+			buffer.writeu32(SendBuffer, OFFSET_0, Key_2)
+			local OFFSET_1 = Allocate(1)
+			buffer.writeu8(SendBuffer, OFFSET_1, Element_2)
+		end
+		buffer.writeu16(SendBuffer, OPERATION_OFFSET_2, Elements_2)
+	end
+	-- END ARRAY
 end
 
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
-	ChunkSurfaceStream = {
+	ChunkFullStream = {
 		Fire = NOOP,
 		FireAll = NOOP,
 		FireList = NOOP,
@@ -270,15 +289,15 @@ end)
 local Returns = table.freeze({
 	StepReplication = StepReplication,
 
-	ChunkSurfaceStream = {
-		Fire = function(Player: Player, Value: { cx: number, cz: number, heights: Vector3, biomes: Vector3 }): ()
+	ChunkFullStream = {
+		Fire = function(Player: Player, Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
 			Load(PlayersMap[Player])
-			WriteEVENT_ChunkSurfaceStream(Value)
+			WriteEVENT_ChunkFullStream(Value)
 			PlayersMap[Player] = Save()
 		end,
-		FireAll = function(Value: { cx: number, cz: number, heights: Vector3, biomes: Vector3 }): ()
+		FireAll = function(Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
 			Load()
-			WriteEVENT_ChunkSurfaceStream(Value)
+			WriteEVENT_ChunkFullStream(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
 			for _, Player in Players:GetPlayers() do
 				Load(PlayersMap[Player])
@@ -288,9 +307,9 @@ local Returns = table.freeze({
 				PlayersMap[Player] = Save()
 			end
 		end,
-		FireList = function(List: {Player}, Value: { cx: number, cz: number, heights: Vector3, biomes: Vector3 }): ()
+		FireList = function(List: {Player}, Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
 			Load()
-			WriteEVENT_ChunkSurfaceStream(Value)
+			WriteEVENT_ChunkFullStream(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
 			for _, Player in List do
 				Load(PlayersMap[Player])
@@ -300,9 +319,9 @@ local Returns = table.freeze({
 				PlayersMap[Player] = Save()
 			end
 		end,
-		FireExcept = function(Except: Player, Value: { cx: number, cz: number, heights: Vector3, biomes: Vector3 }): ()
+		FireExcept = function(Except: Player, Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
 			Load()
-			WriteEVENT_ChunkSurfaceStream(Value)
+			WriteEVENT_ChunkFullStream(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
 			for _, Player in Players:GetPlayers() do
 				if Player == Except then

@@ -6,14 +6,14 @@
       "Packages": {
         "$path": "Packages"
       },
-      "ClientSystems": {
-        "$path": "src/ClientSystems"
-      },
       "ecs": {
         "$path": "src/jecs.luau"
       },
       "std": {
         "$path": "src/std"
+      },
+      "ClientSystems": {
+        "$path": "src/ClientSystems"
       }
     },
     "ServerScriptService": {
