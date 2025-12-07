@@ -159,15 +159,16 @@ local Queue: any = {
 local SerdesEvent = "?"
 local SerdesThread: thread?
 export type block = {[number]: number}
-export type ChunkFull = { cx: number, cz: number, blocks: {[number]: number} }
-local function WriteEVENT_ChunkFullStream(Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
+export type heightfield = {[number]: number}
+export type ChunkFull = { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} }
+local function WriteEVENT_ChunkFullStream(Value: { { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } }): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
 	buffer.writeu8(SendBuffer, BLOCK_START + 0, 0)
 	-- START ARRAY
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, #Value)
-		-- Allocate BLOCK: 6 bytes
-	local ARRAY_START_1 = Allocate(6 * #Value)
+		-- Allocate BLOCK: 8 bytes
+	local ARRAY_START_1 = Allocate(8 * #Value)
 	for Index = 1, #Value do
 		local Item_1 = Value[Index]
 		-- Allocate 2
@@ -190,6 +191,18 @@ local function WriteEVENT_ChunkFullStream(Value: { { cx: number, cz: number, blo
 			buffer.writeu8(SendBuffer, OFFSET_1, Element_2)
 		end
 		buffer.writeu16(SendBuffer, OPERATION_OFFSET_2, Elements_2)
+		-- Allocate 2
+		local OPERATION_OFFSET_3 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		local Elements_2 = 0
+		for Key_2, Element_2 in Item_1.heightfields do
+			Elements_2 += 1
+			local OFFSET_0 = Allocate(4)
+			buffer.writeu32(SendBuffer, OFFSET_0, Key_2)
+			local OFFSET_1 = Allocate(1)
+			buffer.writeu8(SendBuffer, OFFSET_1, Element_2)
+		end
+		buffer.writeu16(SendBuffer, OPERATION_OFFSET_3, Elements_2)
 	end
 	-- END ARRAY
 end
@@ -290,12 +303,12 @@ local Returns = table.freeze({
 	StepReplication = StepReplication,
 
 	ChunkFullStream = {
-		Fire = function(Player: Player, Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
+		Fire = function(Player: Player, Value: { { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } }): ()
 			Load(PlayersMap[Player])
 			WriteEVENT_ChunkFullStream(Value)
 			PlayersMap[Player] = Save()
 		end,
-		FireAll = function(Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
+		FireAll = function(Value: { { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } }): ()
 			Load()
 			WriteEVENT_ChunkFullStream(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
@@ -307,7 +320,7 @@ local Returns = table.freeze({
 				PlayersMap[Player] = Save()
 			end
 		end,
-		FireList = function(List: {Player}, Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
+		FireList = function(List: {Player}, Value: { { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } }): ()
 			Load()
 			WriteEVENT_ChunkFullStream(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
@@ -319,7 +332,7 @@ local Returns = table.freeze({
 				PlayersMap[Player] = Save()
 			end
 		end,
-		FireExcept = function(Except: Player, Value: { { cx: number, cz: number, blocks: {[number]: number} } }): ()
+		FireExcept = function(Except: Player, Value: { { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } }): ()
 			Load()
 			WriteEVENT_ChunkFullStream(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances

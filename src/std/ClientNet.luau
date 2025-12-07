@@ -32,135 +32,136 @@ local RecieveInstanceCursor = 0
 local Null = newproxy()
 
 type Entry = {
-	value: any,
-	next: Entry?
+    value: any,
+    next: Entry?
 }
 
 type Queue = {
-	head: Entry?,
-	tail: Entry?
+    head: Entry?,
+    tail: Entry?
 }
 
 type BufferSave = {
-	Size: number, 
-	Cursor: number, 
-	Buffer: buffer, 
-	Instances: {Instance}
+    Size: number, 
+    Cursor: number, 
+    Buffer: buffer, 
+    Instances: {Instance}
 }
 
 local function Read(Bytes: number)
-	local Offset = RecieveCursor
-	RecieveCursor += Bytes
-	return Offset
+    local Offset = RecieveCursor
+    RecieveCursor += Bytes
+    return Offset
 end
 
 local function Save(): BufferSave
-	return {
-		Size = SendSize,
-		Cursor = SendCursor,
-		Buffer = SendBuffer,
-		Instances = SendInstances
-	}
+    return {
+        Size = SendSize,
+        Cursor = SendCursor,
+        Buffer = SendBuffer,
+        Instances = SendInstances
+    }
 end
 
 local function Load(Save: BufferSave?)
-	if Save then
-		SendSize = Save.Size
-		SendCursor = Save.Cursor
-		SendOffset = Save.Cursor
-		SendBuffer = Save.Buffer
-		SendInstances = Save.Instances
-		return
-	end
+    if Save then
+        SendSize = Save.Size
+        SendCursor = Save.Cursor
+        SendOffset = Save.Cursor
+        SendBuffer = Save.Buffer
+        SendInstances = Save.Instances
+        return
+    end
 
-	SendSize = 64
-	SendCursor = 0
-	SendOffset = 0
-	SendBuffer = buffer.create(64)
-	SendInstances = {}
+    SendSize = 64
+    SendCursor = 0
+    SendOffset = 0
+    SendBuffer = buffer.create(64)
+    SendInstances = {}
 end
 
 local function Invoke()
-	if Invocations == 255 then
-		Invocations = 0
-	end
+    if Invocations == 255 then
+        Invocations = 0
+    end
 
-	local Invocation = Invocations
-	Invocations += 1
-	return Invocation
+    local Invocation = Invocations
+    Invocations += 1
+    return Invocation
 end
 
 local function Allocate(Bytes: number)
-	local InUse = (SendCursor + Bytes)
-	if InUse > SendSize then
-		--> Avoid resizing the buffer for every write
-		while InUse > SendSize do
-			SendSize *= 1.5
-		end
+    local InUse = (SendCursor + Bytes)
+    if InUse > SendSize then
+        --> Avoid resizing the buffer for every write
+        while InUse > SendSize do
+            SendSize *= 1.5
+        end
 
-		local Buffer = buffer.create(SendSize)
-		buffer.copy(Buffer, 0, SendBuffer, 0, SendCursor)
-		SendBuffer = Buffer
-	end
+        local Buffer = buffer.create(SendSize)
+        buffer.copy(Buffer, 0, SendBuffer, 0, SendCursor)
+        SendBuffer = Buffer
+    end
 
-	SendOffset = SendCursor
-	SendCursor += Bytes
-
-	return SendOffset
+    SendOffset = SendCursor
+    SendCursor += Bytes
+    
+    return SendOffset
 end
 
 local function CreateQueue(): Queue
-	return {
-		head = nil,
-		tail = nil
-	}
+    return {
+        head = nil,
+        tail = nil
+    }
 end
 
 local function Pop(queue: Queue): any
-	local head = queue.head
-	if head == nil then
-		return
-	end
+    local head = queue.head
+    if head == nil then
+        return
+    end
 
-	queue.head = head.next
-	return head.value
+    queue.head = head.next
+    return head.value
 end
 
 local function Push(queue: Queue, value: any)
-	local entry: Entry = {
-		value = value,
-		next = nil
-	}
+    local entry: Entry = {
+        value = value,
+        next = nil
+    }
 
-	if queue.tail ~= nil then
-		queue.tail.next = entry
-	end
+    if queue.tail ~= nil then
+        queue.tail.next = entry
+    end
 
-	queue.tail = entry
+    queue.tail = entry
 
-	if queue.head == nil then
-		queue.head = entry
-	end
+    if queue.head == nil then
+        queue.head = entry
+    end
 end
 
 local Calls = table.create(256)
 
 local Events: any = {
-	Reliable = table.create(256),
-	Unreliable = table.create(256)
+    Reliable = table.create(256),
+    Unreliable = table.create(256)
 }
 
 local Queue: any = {
-	Reliable = table.create(256),
-	Unreliable = table.create(256)
+    Reliable = table.create(256),
+    Unreliable = table.create(256)
 }
 
 local SerdesEvent = "?"
 local SerdesThread: thread?
 Queue.Reliable[0] = table.create(256)
 export type block = {[number]: number}
-export type ChunkFull = { cx: number, cz: number, blocks: {[number]: number} }
-local function ReadEVENT_ChunkFullStream(): ({ { cx: number, cz: number, blocks: {[number]: number} } })
+export type heightfield = {[number]: number}
+export type ChunkFull = { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} }
+local function ReadEVENT_ChunkFullStream(): ({ { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } })
 	-- Read BLOCK: 2 bytes
 	local BLOCK_START = Read(2)
 	-- START ARRAY
@@ -168,8 +169,8 @@ local function ReadEVENT_ChunkFullStream(): ({ { cx: number, cz: number, blocks:
 	if Length < 0 then error(`Expected "Length" to be larger than 0, got {Length} instead.`) end
 	if Length > 65535 then error(`Expected "Length" to be smaller than 65535, got {Length} instead.`) end
 	local Value = table.create(Length)
-	-- Read BLOCK: 6 bytes
-	local ARRAY_START_1 = Read(6 * Length)
+		-- Read BLOCK: 8 bytes
+	local ARRAY_START_1 = Read(8 * Length)
 	for Index = 1, Length do
 		local Item_1 = {} :: any
 		-- Read 2
@@ -192,6 +193,18 @@ local function ReadEVENT_ChunkFullStream(): ({ { cx: number, cz: number, blocks:
 			local Element_2 = buffer.readu8(RecieveBuffer, OFFSET_1)
 			Item_1.blocks[Key_2] = Element_2
 		end
+		Item_1.heightfields = {}
+		-- Read 2
+		local OPERATION_OFFSET_3 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		Elements_2 = buffer.readu16(RecieveBuffer, OPERATION_OFFSET_3)
+		for _ = 1, Elements_2 do
+			local OFFSET_0 = Read(4)
+			local Key_2 = buffer.readu32(RecieveBuffer, OFFSET_0)
+			local OFFSET_1 = Read(1)
+			local Element_2 = buffer.readu8(RecieveBuffer, OFFSET_1)
+			Item_1.heightfields[Key_2] = Element_2
+		end
 		table.insert(Value, Item_1)
 	end
 	-- END ARRAY
@@ -201,34 +214,34 @@ end
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
-		ChunkFullStream = {
-			On = NOOP
-		},
+	ChunkFullStream = {
+		On = NOOP
+	},
 	})
 	return Returns :: BLINK_EVENTS_SYMBOL
 end
 
 if not RunService:IsClient() then
-	error("Client network module can only be required from the client.")
+    error("Client network module can only be required from the client.")
 end
 
 local Reliable: RemoteEvent = ReplicatedStorage:WaitForChild(BASE_EVENT_NAME .. "_RELIABLE_REMOTE") :: RemoteEvent
 local Unreliable: UnreliableRemoteEvent = ReplicatedStorage:WaitForChild(BASE_EVENT_NAME .. "_UNRELIABLE_REMOTE") :: UnreliableRemoteEvent
 
 local function StepReplication()
-	if SendCursor <= 0 then
-		return
-	end
+    if SendCursor <= 0 then
+        return
+    end
 
-	local Buffer = buffer.create(SendCursor)
-	buffer.copy(Buffer, 0, SendBuffer, 0, SendCursor)
-	Reliable:FireServer(Buffer, SendInstances)
+    local Buffer = buffer.create(SendCursor)
+    buffer.copy(Buffer, 0, SendBuffer, 0, SendCursor)
+    Reliable:FireServer(Buffer, SendInstances)
 
-	SendSize = 64
-	SendCursor = 0
-	SendOffset = 0
-	SendBuffer = buffer.create(64)
-	table.clear(SendInstances)
+    SendSize = 64
+    SendCursor = 0
+    SendOffset = 0
+    SendBuffer = buffer.create(64)
+    table.clear(SendInstances)
 end
 RunService.Heartbeat:Connect(StepReplication)
 Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
@@ -247,7 +260,7 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 		local BLOCK_START = Read(1)
 		local Index = buffer.readu8(RecieveBuffer, BLOCK_START + 0)
 		if Index == 0 then
-			local Value: { { cx: number, cz: number, blocks: {[number]: number} } } = ReadEVENT_ChunkFullStream()
+			local Value: { { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } } = ReadEVENT_ChunkFullStream()
 			if Events.Reliable[0] ~= nil then
 				SerdesEvent = "ChunkFullStream"
 				Events.Reliable[0](Value)
@@ -283,7 +296,7 @@ local Returns = table.freeze({
 	StepReplication = StepReplication,
 
 	ChunkFullStream = {
-		On = function(Listener: (Value: { { cx: number, cz: number, blocks: {[number]: number} } }) -> ()): () -> ()
+		On = function(Listener: (Value: { { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} } }) -> ()): () -> ()
 			Events.Reliable[0] = Listener
 			for Index, Arguments in Queue.Reliable[0] do
 				Listener(table.unpack(Arguments))

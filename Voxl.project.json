@@ -14,6 +14,9 @@
       },
       "ClientSystems": {
         "$path": "src/ClientSystems"
+      },
+      "Misc": {
+        "$path": "src/Misc"
       }
     },
     "ServerScriptService": {
