@@ -1,5 +1,5 @@
-option ClientOutput = "src/Shared/net.luau"
-option ServerOutput = "src/Server/net.luau"
+option ClientOutput = "src/std/ClientNet.luau"
+option ServerOutput = "src/Server/ServerNet.luau"
 
 struct ChunkSurface {
     cx: i16,

@@ -6,8 +6,8 @@
       "Packages": {
         "$path": "Packages"
       },
-      "clientSystems": {
-        "$path": "clientSystems"
+      "ClientSystems": {
+        "$path": "src/ClientSystems"
       },
       "ecs": {
         "$path": "src/jecs.luau"
