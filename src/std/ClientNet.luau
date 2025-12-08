@@ -158,6 +158,7 @@ local Queue: any = {
 local SerdesEvent = "?"
 local SerdesThread: thread?
 Queue.Reliable[0] = table.create(256)
+Queue.Reliable[1] = table.create(256)
 export type block = {[number]: number}
 export type heightfield = {[number]: number}
 export type ChunkFull = { cx: number, cz: number, blocks: {[number]: number}, heightfields: {[number]: number} }
@@ -211,10 +212,35 @@ local function ReadEVENT_ChunkFullStream(): ({ { cx: number, cz: number, blocks:
 	return Value
 end
 
+local function ReadEVENT_UnloadChunks(): ({ string })
+	-- Read BLOCK: 2 bytes
+	local BLOCK_START = Read(2)
+	-- START ARRAY
+	local Length = buffer.readu16(RecieveBuffer, BLOCK_START + 0)
+	if Length < 0 then error(`Expected "Length" to be larger than 0, got {Length} instead.`) end
+	if Length > 65535 then error(`Expected "Length" to be smaller than 65535, got {Length} instead.`) end
+	local Value = table.create(Length)
+		-- Read BLOCK: 2 bytes
+	local ARRAY_START_1 = Read(2 * Length)
+	for Index = 1, Length do
+		-- Read 2
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		Length = buffer.readu16(RecieveBuffer, OPERATION_OFFSET_0)
+		local Item_1 = buffer.readstring(RecieveBuffer, Read(Length), Length)
+		table.insert(Value, Item_1)
+	end
+	-- END ARRAY
+	return Value
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
 	ChunkFullStream = {
+		On = NOOP
+	},
+	UnloadChunks = {
 		On = NOOP
 	},
 	})
@@ -270,6 +296,17 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 				end
 				table.insert(Queue.Reliable[0], {Value} :: {any})
 			end
+		elseif Index == 1 then
+			local Value: { string } = ReadEVENT_UnloadChunks()
+			if Events.Reliable[1] ~= nil then
+				SerdesEvent = "UnloadChunks"
+				Events.Reliable[1](Value)
+			else
+				if #Queue.Reliable[1] > 256 then
+					warn("[Blink]: Event queue of \"UnloadChunks\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[1], {Value} :: {any})
+			end
 		end
 	end
 end)
@@ -305,6 +342,20 @@ local Returns = table.freeze({
 			return function (): ()
 				if Events.Reliable[0] == Listener then
 					Events.Reliable[0] = nil
+				end
+			end
+		end
+	},
+	UnloadChunks = {
+		On = function(Listener: (Value: { string }) -> ()): () -> ()
+			Events.Reliable[1] = Listener
+			for Index, Arguments in Queue.Reliable[1] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[1] = {}
+			return function (): ()
+				if Events.Reliable[1] == Listener then
+					Events.Reliable[1] = nil
 				end
 			end
 		end

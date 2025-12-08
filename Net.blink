@@ -17,3 +17,10 @@ event ChunkFullStream {
     Call: SingleSync,
     Data: ChunkFull[]
 }
+
+event UnloadChunks {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: string[]
+}

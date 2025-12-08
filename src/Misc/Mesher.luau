@@ -11,7 +11,23 @@ local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 local BLOCK = WorldGen.BLOCK
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
 
+export type ClientChunk = {
+    cx: number,
+    cz: number,
+    blocks: { [number]: number },
+    heightfield: { [number]: number }?,
+}
+
+export type ClientWorld = {
+    [string]: ClientChunk
+}
+
+export type VisibleSet  = { [string]: boolean }
+
 -- ========== index helper ==========
+local function chunkKey(cx: number, cz: number): string
+    return tostring(cx) .. ":" .. tostring(cz)
+end
 
 local function idx3(lx: number, y: number, lz: number): number
     -- 0-based indexing, same as WorldGen
@@ -20,17 +36,53 @@ end
 
 -- ========== block access from sparse map ==========
 
-local function getBlock(blocks: { [number]: number }, lx: number, y: number, lz: number): number
-    if lx < 0 or lx >= CHUNK_SIZE then return BLOCK.Air end
-    if lz < 0 or lz >= CHUNK_SIZE then return BLOCK.Air end
-    if y < 0 or y >= WORLD_HEIGHT then return BLOCK.Air end
+local function getBlockGlobal(
+    world: ClientWorld,
+    visible: VisibleSet,
+    cx: number,
+    cz: number,
+    lx: number,
+    y: number,
+    lz: number
+): number
+    if y < 0 or y >= WORLD_HEIGHT then
+        return BLOCK.Air
+    end
 
-    local linear = idx3(lx, y, lz)
+    local ncx, ncz = cx, cz
+    local nlx, nlz = lx, lz
+
+    -- handle X cross-chunk
+    if nlx < 0 then
+        ncx -= 1
+        nlx += CHUNK_SIZE
+    elseif nlx >= CHUNK_SIZE then
+        ncx += 1
+        nlx -= CHUNK_SIZE
+    end
+
+    -- handle Z cross-chunk
+    if nlz < 0 then
+        ncz -= 1
+        nlz += CHUNK_SIZE
+    elseif nlz >= CHUNK_SIZE then
+        ncz += 1
+        nlz -= CHUNK_SIZE
+    end
+
+    local key = chunkKey(ncx, ncz)
+    local neighbor = world[key]
+    if not neighbor then
+        return BLOCK.Air
+    end
+
+     if (ncx ~= cx or ncz ~= cz) and not visible[key] then
+        return BLOCK.Air
+    end
+
+    local blocks = neighbor.blocks
+    local linear = idx3(nlx, y, nlz)
     return blocks[linear] or BLOCK.Air
-end
-
-local function chunkKey(cx: number, cz: number): string
-    return tostring(cx) .. ":" .. tostring(cz)
 end
 
 local function isSolid(id: number): boolean
@@ -132,10 +184,9 @@ end
 -- ========== Meshing faces in +Y, +X, +Z directions ==========
 
 -- +Y faces: horizontal, facing up. 2D grid in (lx, lz) per y-layer
-local function meshTopFaces(chunk, parent: Instance)
+local function meshTopFaces(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance)
     local cx = chunk.cx
     local cz = chunk.cz
-    local blocks = chunk.blocks
 
     local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
     local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
@@ -145,9 +196,9 @@ local function meshTopFaces(chunk, parent: Instance)
 
         for lz = 0, CHUNK_SIZE - 1 do
             for lx = 0, CHUNK_SIZE - 1 do
-                local id = getBlock(blocks, lx, y, lz)
+                local id      = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
                 if isSolid(id) then
-                    local above = getBlock(blocks, lx, y + 1, lz)
+                    local above = getBlockGlobal(world, visible, cx, cz, lx, y + 1, lz)
                     if not isSolid(above) then
                         local idx2 = lx + lz * CHUNK_SIZE + 1
                         mask[idx2] = id
@@ -175,10 +226,9 @@ local function meshTopFaces(chunk, parent: Instance)
 end
 
 -- +X faces: vertical walls facing +X. 2D grid in (lz, y) per lx-slice
-local function meshPosXFaces(chunk, parent: Instance)
+local function meshPosXFaces(world: ClientWorld, visible:VisibleSet , chunk: ClientChunk, parent: Instance)
     local cx = chunk.cx
     local cz = chunk.cz
-    local blocks = chunk.blocks
 
     local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
     local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
@@ -188,9 +238,9 @@ local function meshPosXFaces(chunk, parent: Instance)
 
         for lz = 0, CHUNK_SIZE - 1 do
             for y = 0, WORLD_HEIGHT - 1 do
-                local id = getBlock(blocks, lx, y, lz)
+                local id = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
                 if isSolid(id) then
-                    local neighbor = getBlock(blocks, lx + 1, y, lz)
+                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx + 1, y, lz)
                     if not isSolid(neighbor) then
                         local idx2 = lz + y * CHUNK_SIZE + 1  -- w = CHUNK_SIZE (z), h = WORLD_HEIGHT (y)
                         mask[idx2] = id
@@ -221,10 +271,9 @@ local function meshPosXFaces(chunk, parent: Instance)
 end
 
 -- +Z faces: vertical walls facing +Z. 2D grid in (lx, y) per lz-slice
-local function meshPosZFaces(chunk, parent: Instance)
+local function meshPosZFaces(world: ClientWorld, visible:VisibleSet, chunk: ClientChunk, parent: Instance)
     local cx = chunk.cx
     local cz = chunk.cz
-    local blocks = chunk.blocks
 
     local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
     local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
@@ -234,9 +283,9 @@ local function meshPosZFaces(chunk, parent: Instance)
 
         for lx = 0, CHUNK_SIZE - 1 do
             for y = 0, WORLD_HEIGHT - 1 do
-                local id = getBlock(blocks, lx, y, lz)
+                local id =  getBlockGlobal(world, visible, cx, cz, lx, y, lz)
                 if isSolid(id) then
-                    local neighbor = getBlock(blocks, lx, y, lz + 1)
+                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx, y, lz + 1)
                     if not isSolid(neighbor) then
                         local idx2 = lx + y * CHUNK_SIZE + 1 -- w = CHUNK_SIZE (x), h = WORLD_HEIGHT (y)
                         mask[idx2] = id
@@ -266,18 +315,100 @@ local function meshPosZFaces(chunk, parent: Instance)
     end
 end
 
--- ========== PUBLIC API ==========
+-- -X faces: vertical walls facing -X. 2D grid in (lz, y) per lx-slice
+local function meshNegXFaces(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance)
+    local cx = chunk.cx
+    local cz = chunk.cz
 
-export type ClientChunk = {
-    cx: number,
-    cz: number,
-    blocks: { [number]: number },
-    heightfield: { [number]: number },
-}
+    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
+    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
+
+    for lx = 0, CHUNK_SIZE - 1 do
+        local mask = table.create(CHUNK_SIZE * WORLD_HEIGHT, 0)
+
+        for lz = 0, CHUNK_SIZE - 1 do
+            for y = 0, WORLD_HEIGHT - 1 do
+                local id = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
+                if isSolid(id) then
+                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx - 1, y, lz)
+                    if not isSolid(neighbor) then
+                        local idx2 = lz + y * CHUNK_SIZE + 1 -- w = CHUNK_SIZE (z), h = WORLD_HEIGHT (y)
+                        mask[idx2] = id
+                    end
+                end
+            end
+        end
+
+        greedy2D(mask, CHUNK_SIZE, WORLD_HEIGHT, function(iz, iy, w, h, blockId)
+            local sizeZ = w * BLOCK_SIZE
+            local sizeY = h * BLOCK_SIZE
+            local thickness = BLOCK_SIZE
+
+            local faceX = lx * BLOCK_SIZE        -- face at the -X side of this column
+            local centerX = (baseX + faceX) - thickness * 0.5
+
+            local centerY = (iy * BLOCK_SIZE) + sizeY * 0.5
+            local centerZ = baseZ + (iz * BLOCK_SIZE) + sizeZ * 0.5
+
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(thickness, sizeY, sizeZ)
+            part.CFrame = CFrame.new(centerX, centerY, centerZ)
+            part.Parent = parent
+            applyBlockAppearance(part, blockId)
+        end)
+    end
+end
+
+-- -Z faces: vertical walls facing -Z. 2D grid in (lx, y) per lz-slice
+local function meshNegZFaces(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance)
+    local cx = chunk.cx
+    local cz = chunk.cz
+
+    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
+    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
+
+    for lz = 0, CHUNK_SIZE - 1 do
+        local mask = table.create(CHUNK_SIZE * WORLD_HEIGHT, 0)
+
+        for lx = 0, CHUNK_SIZE - 1 do
+            for y = 0, WORLD_HEIGHT - 1 do
+                local id = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
+                if isSolid(id) then
+                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx, y, lz - 1)
+                    if not isSolid(neighbor) then
+                        local idx2 = lx + y * CHUNK_SIZE + 1 -- w = CHUNK_SIZE (x), h = WORLD_HEIGHT (y)
+                        mask[idx2] = id
+                    end
+                end
+            end
+        end
+
+        greedy2D(mask, CHUNK_SIZE, WORLD_HEIGHT, function(ix, iy, w, h, blockId)
+            local sizeX = w * BLOCK_SIZE
+            local sizeY = h * BLOCK_SIZE
+            local thickness = BLOCK_SIZE
+
+            local faceZ = lz * BLOCK_SIZE        -- face at the -Z side of this column
+            local centerZ = (baseZ + faceZ) - thickness * 0.5
+
+            local centerX = baseX + (ix * BLOCK_SIZE) + sizeX * 0.5
+            local centerY = (iy * BLOCK_SIZE) + sizeY * 0.5
+
+            local part = Instance.new("Part")
+            part.Size = Vector3.new(sizeX, sizeY, thickness)
+            part.CFrame = CFrame.new(centerX, centerY, centerZ)
+            part.Parent = parent
+            applyBlockAppearance(part, blockId)
+        end)
+    end
+end
+
+
+-- ========== PUBLIC API ==========
 
 local ChunkMesher = {}
 
-function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
+function ChunkMesher.BuildChunk(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance): Model
     local key = chunkKey(chunk.cx, chunk.cz)
 
     local model = Instance.new("Model")
@@ -285,9 +416,11 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
     model.Parent = parent
 
     -- mesh all visible faces:
-    meshTopFaces(chunk, model)
-    meshPosXFaces(chunk, model)
-    meshPosZFaces(chunk, model)
+    meshTopFaces(world, visible, chunk, model)
+    meshPosXFaces(world, visible, chunk, model)
+    meshNegXFaces(world, visible, chunk, model)
+    meshPosZFaces(world, visible, chunk, model)
+    meshNegZFaces(world, visible, chunk, model)
 
     return model
 end

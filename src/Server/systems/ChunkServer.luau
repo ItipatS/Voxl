@@ -25,7 +25,7 @@ local NORMAL_BATCH = 24
 local NORMAL_INTERVAL = 0.5
 
 -- How many chunks of DATA we want per player
-local MAX_CHUNKS_PER_PLAYER = 3000
+local MAX_CHUNKS_PER_PLAYER = 1000
 
 local DATA_RADIUS_CHUNKS = 12
 
@@ -122,14 +122,16 @@ local function rebuildDesiredChunks(plr: Player, st: PlayerState, pcx: number, p
     end
 
 
-    --[[local toUnload = {}
+    local toUnload = {}
     for key, _ in pairs(st.loaded) do
          if not desired[key] then
              toUnload[#toUnload+1] = key
              st.loaded[key] = nil
          end
      end
-    if #toUnload > 0 then blink.UnloadChunks.Fire(plr, toUnload) end]]
+    if #toUnload > 0 then 
+        blink.UnloadChunks.Fire(plr, toUnload) 
+    end
 
     st.pending = newPending
 end

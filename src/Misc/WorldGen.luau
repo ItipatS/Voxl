@@ -4,7 +4,7 @@
 local WorldGen = {}
 
 local CHUNK_SIZE = 16
-local WORLD_HEIGHT = 512
+local WORLD_HEIGHT = 256
 local BLOCK_SIZE = 3.5
 
 local BASE_SEED = 1337
@@ -17,6 +17,7 @@ WorldGen.BLOCK = {
     Stone = 4,
     Snow = 5
 }
+local WATER_LEVEL = 60
 
 local BLOCK = WorldGen.BLOCK
 
@@ -48,59 +49,60 @@ type BiomeDef = {
 }
 
 local Biomes: { [number]: BiomeDef } = {
-    -- 1
-    [1] = {
-        name      = "Plains",
-        top       = BLOCK.Grass,
-        under     = BLOCK.Dirt,
+    [1] = { -- Plains
+        name = "Plains",
+        top = BLOCK.Grass,
+        under = BLOCK.Dirt,
         soilDepth = 4,
-        minHeight = 52,
+        minHeight = 58,
         maxHeight = 72,
     },
-    -- 2
-    [2] = {
-        name      = "Desert",
-        top       = BLOCK.Sand,
-        under     = BLOCK.Sand,
-        soilDepth = 5,
-        minHeight = 50,
-        maxHeight = 68,
-    },
-    -- 3
-    [3] = {
-        name      = "Forest",
-        top       = BLOCK.Grass,
-        under     = BLOCK.Dirt,
+
+    [2] = { -- Desert
+        name = "Desert",
+        top = BLOCK.Sand,
+        under = BLOCK.Sand,
         soilDepth = 5,
         minHeight = 56,
-        maxHeight = 84,
+        maxHeight = 70,
     },
-    -- 4
-    [4] = {
-        name      = "Mountains",
-        top       = BLOCK.Stone,
-        under     = BLOCK.Stone,
+
+    [3] = { -- Forest
+        name = "Forest",
+        top = BLOCK.Grass,
+        under = BLOCK.Dirt,
+        soilDepth = 5,
+        minHeight = 60,
+        maxHeight = 85,
+    },
+
+    [4] = { -- Mountains
+        name = "Mountains",
+        top = BLOCK.Stone,
+        under = BLOCK.Stone,
         soilDepth = 3,
         minHeight = 90,
-        maxHeight = 200,
+        maxHeight = 155,   -- before was 200
     },
-    -- 5
-    [5] = {
-        name      = "SnowHighlands", -- visually still Stone unless you add Snow
-        top       = BLOCK.Snow,
-        under     = BLOCK.Stone,
+
+    [5] = { -- Snow Highlands
+        name = "SnowHighlands",
+        top = BLOCK.Snow,
+        under = BLOCK.Stone,
         soilDepth = 3,
         minHeight = 120,
-        maxHeight = 240,
+        maxHeight = 190,   -- before was 240
     },
 }
 
+
 local function sampleHeightNoise(wx: number, wz: number): number
-    local cScale = 0.0008
+    -- 1) Very low freq = continents / big basins
+    local cScale = 0.0004
     local continents = noise2D(BASE_SEED, wx * cScale, wz * cScale)
 
-    -- mid-scale ridges
-    local rScale = 0.003
+    -- mid-scale ridges (abs → ridged, ^3 → sharper peaks at top)
+    local rScale = 0.0012
     local ridges = noise2D(BASE_SEED + 101, wx * rScale, wz * rScale)
 
     -- fine detail
@@ -108,8 +110,8 @@ local function sampleHeightNoise(wx: number, wz: number): number
     local detail = noise2D(BASE_SEED + 202, wx * dScale, wz * dScale)
 
     local n =
-        continents * 0.6 +
-        ridges     * 0.3 +
+        continents * 0.55 +
+        ridges     * 0.35 +
         detail     * 0.1
     
     return n01(n) -- 0..1
@@ -163,11 +165,78 @@ export type ChunkFull = {
     heightfields: { [number]: number },
 }
 
+local function computeColumnHeight(
+    wx: number,
+    wz: number,
+    biomeId: number,
+    base01: number
+): number
+    local biome = Biomes[biomeId]
+
+    -- Base height within biome range
+    local h = biome.minHeight + base01 * (biome.maxHeight - biome.minHeight)
+
+    -- ==== Biome-specific shaping ====
+
+    -- Plains → very smooth, gentle rolling
+    if biomeId == 1 then -- Plains
+        local smooth = n01(noise2D(BASE_SEED + 901, wx * 0.003, wz * 0.003))
+        smooth = smooth ^ 2            -- more flat, bumps mostly in mid
+        h = biome.minHeight + smooth * (biome.maxHeight - biome.minHeight)
+    end
+
+    -- Desert → low variation + dunes
+    if biomeId == 2 then -- Desert
+        -- Big flat-ish desert floor
+        local desertBase = n01(noise2D(BASE_SEED + 902, wx * 0.002, wz * 0.002))
+        h = biome.minHeight + desertBase * (biome.maxHeight - biome.minHeight)
+
+        -- Dunes: directional medium-frequency waves
+        local dune = noise2D(BASE_SEED + 903, wx * 0.015, wz * 0.005)
+        h = h + dune * 6 -- +/- 6 blocks of dunes
+    end
+
+    -- Forest → a bit rougher than plains, but still climbable
+    if biomeId == 3 then -- Forest
+        local rough = n01(noise2D(BASE_SEED + 904, wx * 0.004, wz * 0.004))
+        rough = rough ^ 1.5
+        h = biome.minHeight + rough * (biome.maxHeight - biome.minHeight)
+    end
+
+    -- Mountains (stone) → use ridged/mountain noise extra
+    if biomeId == 4 then -- Mountains
+        local ridged = math.abs(noise2D(BASE_SEED + 905, wx * 0.002, wz * 0.002)) ^ 3
+        h = h + ridged * 40  -- was 80, now 40 for 256 world height
+    end
+
+    if biomeId == 5 then -- SnowHighlands
+        local ridged = math.abs(noise2D(BASE_SEED + 906, wx * 0.002, wz * 0.002)) ^ 4
+        h = h + ridged * 60  -- was 120, now 60
+    end
+
+    -- Lakes / basins: flatten low-lying areas near water level
+    -- (This keeps broad lakes instead of jagged, noisy holes.)
+    if h < WATER_LEVEL - 4 then
+        -- Blend upwards a bit so bottoms aren't crazy noisy
+        local t = (WATER_LEVEL - 4 - h) / 16 -- how far below lake floor
+        t = math.clamp(t, 0, 1)
+        h = h * (1 - t) + (WATER_LEVEL - 8) * t
+    end
+
+    -- Clamp to world
+    if h < 0 then
+        h = 0
+    end
+    if h > WORLD_HEIGHT - 1 then
+        h = WORLD_HEIGHT - 1
+    end
+
+    return math.floor(h)
+end
+
 function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
     local heightFields = table.create(CHUNK_SIZE * CHUNK_SIZE, 0)
     local biomeField  = table.create(CHUNK_SIZE * CHUNK_SIZE, 0)
-
-    local minH, maxH = 40, 300
 
     -- 1) height + biome per (x,z)
     for lz = 0, CHUNK_SIZE - 1 do
@@ -175,29 +244,14 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
             local wx = cx * CHUNK_SIZE + lx
             local wz = cz * CHUNK_SIZE + lz
 
-            local hNoise = sampleHeightNoise(wx, wz)
+            local base01 = sampleHeightNoise(wx, wz)
             local temp   = sampleTempNoise(wx, wz)
             local humid  = sampleHumidityNoise(wx, wz)
 
-            local biomeId = pickBiome(temp, humid, hNoise)
+            local biomeId = pickBiome(temp, humid, base01)
             biomeField[lx + lz * CHUNK_SIZE + 1] = biomeId
 
-            local biome = Biomes[biomeId]
-            local minH = math.max(minH, biome.minHeight)
-            local maxH = math.min(maxH, biome.maxHeight)
-
-            local height = math.floor(minH + hNoise * (maxH - minH))
-
-            if height < 0 then
-                height = 0
-            end
-            if height > WORLD_HEIGHT - 1 then
-                height = WORLD_HEIGHT - 1
-            end
-
-            if height < 70 then
-                height = math.floor(0.5 * height + 0.5 * 60)
-            end
+            local height = computeColumnHeight(wx, wz, biomeId, base01)
 
             local i = lx + lz * CHUNK_SIZE + 1
             heightFields[i] = height

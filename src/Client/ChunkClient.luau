@@ -1,5 +1,8 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local localPlayer = Players.LocalPlayer
+
 local std = ReplicatedStorage.std
 
 local blink = require(std.ClientNet)
@@ -10,24 +13,49 @@ local ChunkMesher = require(ReplicatedStorage.Misc.Mesher)
 local CHUNK_SIZE = WorldGen.CHUNK_SIZE
 local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 
-local MAX_MESH_PER_FRAME = 10
+local MAX_MESH_PER_FRAME = 5
 
 local chunkcount:number = 0
 
 local MeshQueue = {}
 local MeshedChunks = {}
+local Queued: { [string]: boolean } = {}
 
-local ClientWorld: {
-    [string]: {
-        cx: number,
-        cz: number,
-        blocks: { [number]: number },
-    }
-} = {}
+local RENDER_RADIUS_CHUNKS = 8
+
+export type ClientChunk = {
+    cx: number,
+    cz: number,
+    blocks: { [number]: number },
+    heightfield: { [number]: number }?,
+}
+
+export type ClientWorld = {
+    [string]: ClientChunk
+}
+
+local ClientWorld: ClientWorld = {}
+
+local function worldToChunk(px: number, pz: number): (number, number)
+    local blockX = px / WorldGen.BLOCK_SIZE
+    local blockZ = pz / WorldGen.BLOCK_SIZE
+    local cx = math.floor(blockX / CHUNK_SIZE)
+    local cz = math.floor(blockZ / CHUNK_SIZE)
+    return cx, cz
+end
 
 local function chunkKey(cx: number, cz: number): string
     return tostring(cx) .. ":" .. tostring(cz)
 end
+
+local function buildVisibleSet(): { [string]: boolean }
+    local visible = {}
+    for key, _ in pairs(MeshedChunks) do
+        visible[key] = true
+    end
+    return visible
+end
+
 
 local Chunks = Instance.new("Folder")
 Chunks.Name = "Chunks"
@@ -37,13 +65,23 @@ local function idx3(x: number, y: number, z: number): number
     return x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * WORLD_HEIGHT)
 end
 
+local function enqueueChunkForMeshing(cx: number, cz: number)
+    local key = chunkKey(cx, cz)
+    -- only if we have data, no mesh yet, and not already queued
+    if ClientWorld[key] and not MeshedChunks[key] and not Queued[key] then
+        print("Enqueue", key, "for meshing")
+        table.insert(MeshQueue, key)
+        Queued[key] = true
+    end
+end
+
 blink.ChunkFullStream.On(function(payloads)
     for _, entry in payloads do
         local cx = entry.cx
         local cz = entry.cz
         local key = chunkKey(cx, cz)
 
-         local chunk: ChunkMesher.ClientChunk = {
+        local chunk: ChunkMesher.ClientChunk = {
             cx = cx,
             cz = cz,
             blocks = entry.blocks,
@@ -52,10 +90,46 @@ blink.ChunkFullStream.On(function(payloads)
 
         ClientWorld[key] = chunk
 
-        MeshQueue[#MeshQueue+1] = key
+        local offsets = {
+            {  1,  0 },
+            { -1,  0 },
+            {  0,  1 },
+            {  0, -1 },
+        }
+
+        for _, off in ipairs(offsets) do
+            local ncx = chunk.cx + off[1]
+            local ncz = chunk.cz + off[2]
+            local nkey = chunkKey(ncx, ncz)
+            if MeshedChunks[nkey] then
+                enqueueChunkForMeshing(ncx, ncz)
+            end
+        end
     end
     chunkcount += #payloads
     print("Chunks received: ", chunkcount)
+end)
+
+blink.UnloadChunks.On(function(payloads)
+    for _, key in ipairs(payloads) do
+        -- destroy model if present
+        local model = MeshedChunks[key]
+        if model then
+            model:Destroy()
+            MeshedChunks[key] = nil
+        end
+
+        -- drop voxel data (server will resend if needed later)
+        ClientWorld[key] = nil
+        Queued[key] = nil
+
+        -- clean from mesh queue
+        for i = #MeshQueue, 1, -1 do
+            if MeshQueue[i] == key then
+                table.remove(MeshQueue, i)
+            end
+        end
+    end
 end)
 
 -- helper: get blockId or Air if nil
@@ -70,15 +144,68 @@ function ClientWorld.getBlock(cx: number, cz: number, lx: number, y: number, lz:
     return chunk.blocks[linear] or WorldGen.BLOCK.Air
 end
 
+local function updateRenderedChunks()
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return
+    end
+
+    local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
+
+    -- 1) Build desired render set around player
+    local desired: { [string]: boolean } = {}
+
+    for dz = -RENDER_RADIUS_CHUNKS, RENDER_RADIUS_CHUNKS do
+        for dx = -RENDER_RADIUS_CHUNKS, RENDER_RADIUS_CHUNKS do
+            local cx = pcx + dx
+            local cz = pcz + dz
+            local key = chunkKey(cx, cz)
+            desired[key] = true
+
+            -- If we have data but no mesh yet, queue it
+            if ClientWorld[key] and not MeshedChunks[key] then
+                enqueueChunkForMeshing(cx, cz)
+            end
+        end
+    end
+
+    -- 2) Destroy models that are no longer in render radius
+    for key, model in pairs(MeshedChunks) do
+        if not desired[key] then
+            if model then
+                model:Destroy()
+            end
+            MeshedChunks[key] = nil
+            Queued[key] = nil
+
+            -- also remove any pending mesh job for this key
+            for i = #MeshQueue, 1, -1 do
+                if MeshQueue[i] == key then
+                    table.remove(MeshQueue, i)
+                end
+            end
+        end
+    end
+end
+
 RunService.RenderStepped:Connect(function()
+    updateRenderedChunks()
+
+     local visibleSet = buildVisibleSet()
+    -- mesh a few per frame
     for i = 1, MAX_MESH_PER_FRAME do
         local key = table.remove(MeshQueue, 1)
-        if not key then return end
+        if not key then break end
 
         local chunk = ClientWorld[key]
-        local model = ChunkMesher.BuildChunk(chunk, Chunks)
-        MeshedChunks[key] = model
+        if chunk then
+            local model = ChunkMesher.BuildChunk(ClientWorld, visibleSet, chunk, Chunks)
+            MeshedChunks[key] = model
+        end
+        Queued[key] = nil
     end
 end)
+
 
 return ClientWorld

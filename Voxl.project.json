@@ -3,6 +3,12 @@
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
+      "ClientSystems": {
+        "$path": "src/ClientSystems"
+      },
+      "Misc": {
+        "$path": "src/Misc"
+      },
       "Packages": {
         "$path": "Packages"
       },
@@ -11,12 +17,6 @@
       },
       "std": {
         "$path": "src/std"
-      },
-      "ClientSystems": {
-        "$path": "src/ClientSystems"
-      },
-      "Misc": {
-        "$path": "src/Misc"
       }
     },
     "ServerScriptService": {
@@ -28,6 +28,10 @@
     "StarterPlayer": {
       "StarterPlayerScripts": {
         "$path": "src/Client"
+      },
+      "$properties": {
+        "CameraMaxZoomDistance": 128,
+        "CharacterUseJumpPower": false
       }
     }
   }
