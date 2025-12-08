@@ -2,13 +2,14 @@ option ClientOutput = "src/std/ClientNet.luau"
 option ServerOutput = "src/Server/ServerNet.luau"
 
 map block = { [u32]: u8 }
+
 map heightfield = { [u32]: u8 }
 
 struct ChunkFull {
     cx: i16,
     cz: i16,
     blocks: block,
-    heightfields: heightfield
+    heightfields: heightfield,
 }
 
 event ChunkFullStream {

@@ -13,21 +13,29 @@ local ChunkMesher = require(ReplicatedStorage.Misc.Mesher)
 local CHUNK_SIZE = WorldGen.CHUNK_SIZE
 local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 
-local MAX_MESH_PER_FRAME = 5
-
 local chunkcount:number = 0
 
-local MeshQueue = {}
 local MeshedChunks = {}
+
+local MeshQueue = {}
 local Queued: { [string]: boolean } = {}
 
-local RENDER_RADIUS_CHUNKS = 8
+local CurrentVisibleSet: { [string]: boolean } = {}
+
+local NEAR_RADIUS = 10
+local FAR_RADIUS  = 12 
+local UNLOAD_RADIUS  = NEAR_RADIUS + 4
+
+local BUILD_INTERVAL = 1 / 60
+local MAX_CHUNK_PER_FRAME = 5
 
 export type ClientChunk = {
     cx: number,
     cz: number,
     blocks: { [number]: number },
-    heightfield: { [number]: number }?,
+    heightfields: { [number]: number },
+    minY: number,
+    maxY: number,
 }
 
 export type ClientWorld = {
@@ -49,13 +57,8 @@ local function chunkKey(cx: number, cz: number): string
 end
 
 local function buildVisibleSet(): { [string]: boolean }
-    local visible = {}
-    for key, _ in pairs(MeshedChunks) do
-        visible[key] = true
-    end
-    return visible
+    return CurrentVisibleSet
 end
-
 
 local Chunks = Instance.new("Folder")
 Chunks.Name = "Chunks"
@@ -69,7 +72,6 @@ local function enqueueChunkForMeshing(cx: number, cz: number)
     local key = chunkKey(cx, cz)
     -- only if we have data, no mesh yet, and not already queued
     if ClientWorld[key] and not MeshedChunks[key] and not Queued[key] then
-        print("Enqueue", key, "for meshing")
         table.insert(MeshQueue, key)
         Queued[key] = true
     end
@@ -81,11 +83,22 @@ blink.ChunkFullStream.On(function(payloads)
         local cz = entry.cz
         local key = chunkKey(cx, cz)
 
+        local heightfields = entry.heightfields
+
+         local minY = WORLD_HEIGHT - 1
+        local maxY = 0
+        for _, h in ipairs(heightfields) do
+            if h < minY then minY = h end
+            if h > maxY then maxY = h end
+        end
+
         local chunk: ChunkMesher.ClientChunk = {
             cx = cx,
             cz = cz,
             blocks = entry.blocks,
-            heightfields = entry.heightfields
+            heightfields = entry.heightfields,
+            minY = minY,
+            maxY = maxY,
         }
 
         ClientWorld[key] = chunk
@@ -115,7 +128,7 @@ blink.UnloadChunks.On(function(payloads)
         -- destroy model if present
         local model = MeshedChunks[key]
         if model then
-            model:Destroy()
+            ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
         end
 
@@ -153,11 +166,12 @@ local function updateRenderedChunks()
 
     local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
 
+
     -- 1) Build desired render set around player
     local desired: { [string]: boolean } = {}
 
-    for dz = -RENDER_RADIUS_CHUNKS, RENDER_RADIUS_CHUNKS do
-        for dx = -RENDER_RADIUS_CHUNKS, RENDER_RADIUS_CHUNKS do
+    for dz = -NEAR_RADIUS, NEAR_RADIUS do
+        for dx = -NEAR_RADIUS, NEAR_RADIUS do
             local cx = pcx + dx
             local cz = pcz + dz
             local key = chunkKey(cx, cz)
@@ -170,41 +184,61 @@ local function updateRenderedChunks()
         end
     end
 
+    CurrentVisibleSet = desired
+
     -- 2) Destroy models that are no longer in render radius
     for key, model in pairs(MeshedChunks) do
-        if not desired[key] then
+        local chunk = ClientWorld[key]
+        if chunk then
+            local dist = math.max(
+                math.abs(chunk.cx - pcx),
+                math.abs(chunk.cz - pcz)
+            ) -- Chebyshev distance in chunk space
+
+            if dist > UNLOAD_RADIUS then
+                if model then
+                    ChunkMesher.RecycleChunkModel(model)
+                end
+                MeshedChunks[key] = nil
+                Queued[key] = nil
+
+                for i = #MeshQueue, 1, -1 do
+                    if MeshQueue[i] == key then
+                        table.remove(MeshQueue, i)
+                    end
+                end
+            end
+        else
+            -- no data anymore, just clean up
             if model then
-                model:Destroy()
+                ChunkMesher.RecycleChunkModel(model)
             end
             MeshedChunks[key] = nil
             Queued[key] = nil
-
-            -- also remove any pending mesh job for this key
-            for i = #MeshQueue, 1, -1 do
-                if MeshQueue[i] == key then
-                    table.remove(MeshQueue, i)
-                end
-            end
         end
     end
 end
 
 RunService.RenderStepped:Connect(function()
+
     updateRenderedChunks()
 
      local visibleSet = buildVisibleSet()
-    -- mesh a few per frame
-    for i = 1, MAX_MESH_PER_FRAME do
+
+     for i = 1, MAX_CHUNK_PER_FRAME do
+        -- mesh a few per frame
         local key = table.remove(MeshQueue, 1)
         if not key then break end
 
         local chunk = ClientWorld[key]
+        
         if chunk then
             local model = ChunkMesher.BuildChunk(ClientWorld, visibleSet, chunk, Chunks)
             MeshedChunks[key] = model
         end
         Queued[key] = nil
     end
+
 end)
 
 

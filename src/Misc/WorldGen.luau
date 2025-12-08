@@ -7,7 +7,7 @@ local CHUNK_SIZE = 16
 local WORLD_HEIGHT = 256
 local BLOCK_SIZE = 3.5
 
-local BASE_SEED = 1337
+local BASE_SEED = 1339
 
 WorldGen.BLOCK = {
     Air   = 0,
@@ -319,7 +319,7 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
         cx = cx,
         cz = cz,
         blocks = blocks,
-        heightfields = heightFields
+        heightfields = heightFields,
     }
     
 end
