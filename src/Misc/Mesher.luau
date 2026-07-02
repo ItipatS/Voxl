@@ -15,9 +15,11 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
+local Blocks = require(ReplicatedStorage.Misc.Blocks)
 local CHUNK_SIZE = WorldGen.CHUNK_SIZE
 local BLOCK = WorldGen.BLOCK
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
+local BlockDefs = Blocks.defs
 
 export type ClientChunk = {
     cx: number,
@@ -31,23 +33,6 @@ export type ClientWorld = {
 local function chunkKey(cx: number, cz: number): string
     return tostring(cx) .. ":" .. tostring(cz)
 end
-
--- ========== appearance ==========
-local BlockColors: { [number]: Color3 } = {
-    [BLOCK.Grass] = Color3.fromRGB(80, 160, 80),
-    [BLOCK.Dirt]  = Color3.fromRGB(120, 72, 48),
-    [BLOCK.Sand]  = Color3.fromRGB(235, 225, 180),
-    [BLOCK.Stone] = Color3.fromRGB(120, 120, 120),
-    [BLOCK.Snow]  = Color3.fromRGB(255, 255, 255),
-}
-
-local BlockMaterials: { [number]: Enum.Material } = {
-    [BLOCK.Grass] = Enum.Material.Grass,
-    [BLOCK.Dirt]  = Enum.Material.Ground,
-    [BLOCK.Sand]  = Enum.Material.Sand,
-    [BLOCK.Stone] = Enum.Material.Slate,
-    [BLOCK.Snow]  = Enum.Material.Snow,
-}
 
 -- ========== part pool ==========
 local PartPool: { BasePart } = {}
@@ -72,52 +57,28 @@ end
 -- The PART is fully transparent so its fill/colour never shows through the gaps
 -- in the texture — only the texture (with its alpha cutout) draws, so leaves/glass
 -- read as real cutouts with the blocks behind visible through the holes.
-local TRANSPARENT: { [number]: boolean } = {
-    [BLOCK.OakLeaves] = true,
-}
-local BLOCK_TRANSPARENCY: { [number]: number } = {
-    [BLOCK.OakLeaves] = 1,
-}
+-- Face-culling + appearance come straight from the block registry. A cell hides
+-- its neighbour's facing side only if it is opaque (solid & not transparent).
+local isOpaque = Blocks.isOpaque
 
--- A cell hides its neighbour's facing side only if it is opaque (solid & not
--- transparent). Air and transparent blocks leave the neighbour face visible.
-local function isOpaque(blockId: number): boolean
-    return blockId ~= 0 and not TRANSPARENT[blockId]
-end
-
+local MAGENTA = Color3.fromRGB(255, 0, 255)
 local function applyBlockAppearance(part: BasePart, blockId: number)
-    part.Material = BlockMaterials[blockId] or Enum.Material.SmoothPlastic
-    part.Color = BlockColors[blockId] or Color3.fromRGB(255, 0, 255)
-    part.Transparency = BLOCK_TRANSPARENCY[blockId] or 0
+    local d = BlockDefs[blockId]
+    if d then
+        part.Material = d.material
+        part.Color = d.color
+        part.Transparency = d.alpha or 0
+    else
+        part.Material = Enum.Material.SmoothPlastic
+        part.Color = MAGENTA
+        part.Transparency = 0
+    end
 end
 
 -- ========== textures (per-face Texture objects) ==========
--- Each block face is its own image, upscaled to ~1600px so bilinear filtering stays
--- crisp (3D Textures can't be point-filtered). A Texture tiles ONE image per block
--- (StudsPerTile = BLOCK_SIZE), so it works across greedy-merged box faces and stays
--- far lighter than SurfaceGuis.
-local TEX = {
-    stone    = "rbxassetid://84046704582684",
-    oakTop   = "rbxassetid://105200585443073", -- oak log top & bottom
-    oakSide  = "rbxassetid://120664114630276",
-    oakLeaf  = "rbxassetid://104131890534229",
-    debug    = "rbxassetid://78128038044643",  -- placeholder for unmapped blocks
-    grassTop = "rbxassetid://99956800911799",
-    grassSide= "rbxassetid://108714877040603",
-    dirt     = "rbxassetid://112826071106637", -- also grass bottom
-    snow     = "rbxassetid://121040441244210",
-    sand     = "rbxassetid://75605206965672",
-}
-
-local BlockTextures: { [number]: { top: string, bottom: string, side: string } } = {
-    [BLOCK.Grass]     = { top = TEX.grassTop, bottom = TEX.dirt,   side = TEX.grassSide },
-    [BLOCK.Dirt]      = { top = TEX.dirt,     bottom = TEX.dirt,   side = TEX.dirt },
-    [BLOCK.Sand]      = { top = TEX.sand,     bottom = TEX.sand,   side = TEX.sand },
-    [BLOCK.Stone]     = { top = TEX.stone,    bottom = TEX.stone,  side = TEX.stone },
-    [BLOCK.Snow]      = { top = TEX.snow,     bottom = TEX.snow,   side = TEX.snow },
-    [BLOCK.OakLog]    = { top = TEX.oakTop,   bottom = TEX.oakTop, side = TEX.oakSide },
-    [BLOCK.OakLeaves] = { top = TEX.oakLeaf,  bottom = TEX.oakLeaf, side = TEX.oakLeaf },
-}
+-- Each block face is its own image (StudsPerTile = BLOCK_SIZE tiles one image per
+-- block across greedy-merged faces). Sourced from the registry.
+local BlockTextures = Blocks.BlockTextures
 
 -- Pooled PER IMAGE: a reused Texture already holds the right image, so its .Texture
 -- is never reassigned on re-mesh — no image re-decode, no whole-chunk flash on edit.

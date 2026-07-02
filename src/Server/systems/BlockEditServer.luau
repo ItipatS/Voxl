@@ -11,6 +11,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local blink = require(game:GetService("ServerScriptService").ServerNet)
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
+local Blocks = require(ReplicatedStorage.Misc.Blocks)
 local WorldDiff = require(ReplicatedStorage.Misc.WorldDiff)
 local WorldStore = require(script.Parent.WorldStore)
 local PlayerStore = require(script.Parent.PlayerStore)
@@ -21,20 +22,9 @@ local BLOCK = WorldGen.BLOCK
 local getColumn = WorldGen.getColumn
 local REACH_STUDS = 10 * BLOCK_SIZE -- how far a player can edit from their root
 
--- Blocks a client is allowed to place (Air = break is always allowed).
-local PLACEABLE: { [number]: boolean } = {
-    [BLOCK.Grass] = true,
-    [BLOCK.Dirt] = true,
-    [BLOCK.Sand] = true,
-    [BLOCK.Stone] = true,
-    [BLOCK.Snow] = true,
-    [BLOCK.OakLog] = true,
-    [BLOCK.OakLeaves] = true,
-}
-
 blink.EditBlock.On(function(player: Player, edit)
     local block = edit.block
-    if block ~= BLOCK.Air and not PLACEABLE[block] then
+    if block ~= BLOCK.Air and not Blocks.isPlaceable(block) then
         return -- unknown/disallowed block
     end
 
