@@ -68,13 +68,15 @@ local function getPooledPart(): BasePart
     return part
 end
 
--- See-through blocks: they don't occlude neighbours (blocks behind them render),
--- and their own part is drawn semi-transparent so you can see through.
+-- See-through blocks: they don't occlude neighbours (blocks behind them render).
+-- The PART is fully transparent so its fill/colour never shows through the gaps
+-- in the texture — only the texture (with its alpha cutout) draws, so leaves/glass
+-- read as real cutouts with the blocks behind visible through the holes.
 local TRANSPARENT: { [number]: boolean } = {
     [BLOCK.OakLeaves] = true,
 }
 local BLOCK_TRANSPARENCY: { [number]: number } = {
-    [BLOCK.OakLeaves] = 0.35,
+    [BLOCK.OakLeaves] = 1,
 }
 
 -- A cell hides its neighbour's facing side only if it is opaque (solid & not
@@ -167,6 +169,8 @@ local getColumn = WorldGen.getColumn
 local blockAt = WorldGen.blockAt
 local diffBlockAt = WorldDiff.blockAt
 local CAVE_FLOOR = WorldGen.CAVE_START_Y - 1
+local TREE_MAX_H = WorldGen.TREE_MAX_H
+local GRASS_BIOMES = { [1] = true, [3] = true } -- Plains, Forest — where trees grow
 
 local function runGreedy3D(chunk: ClientChunk, emit: Emit)
     local cx, cz = chunk.cx, chunk.cz
@@ -183,16 +187,22 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
     local Hgrid = table.create(slab, 0)
     local Bgrid = table.create(slab, 0)
     local maxY = 0
+    local hasGrass = false
     for z = -1, CS do
         for x = -1, CS do
             local h, b = getColumn(cx * CS + x, cz * CS + z)
             local i = (x + 1) + (z + 1) * GW + 1
             Hgrid[i] = h
             Bgrid[i] = b
+            if GRASS_BIOMES[b] then hasGrass = true end
             if x >= 0 and x < CS and z >= 0 and z < CS and h > maxY then
                 maxY = h
             end
         end
+    end
+    -- Trees sit in the air above the surface; raise the range to fit their canopy.
+    if hasGrass then
+        maxY += TREE_MAX_H
     end
 
     -- Full 3D range: caves reach down to CAVE_START_Y, so mesh [caveFloor, maxY].
@@ -440,12 +450,13 @@ local function setFaceTexture(part: BasePart, face: Enum.NormalId, image: string
     end
 end
 
--- Set a cell part's visible faces to match exposure. Bottom is NEVER textured
--- (it's essentially never seen and doubles the churn when digging).
-local function applyCellFaces(part: BasePart, id: number, ePX, eNX, ePY, ePZ, eNZ)
+-- Set a cell part's visible faces to match exposure (all six; block mode wants
+-- bottoms so overhangs/undersides read correctly once the terrain is de-greedied).
+local function applyCellFaces(part: BasePart, id: number, ePX, eNX, ePY, eNY, ePZ, eNZ)
     local tex = BlockTextures[id]
     local side = tex and tex.side or nil
     setFaceTexture(part, NID_TOP, (ePY and tex) and tex.top or nil)
+    setFaceTexture(part, NID_BOTTOM, (eNY and tex) and tex.bottom or nil)
     setFaceTexture(part, NID_RIGHT, ePX and side or nil)
     setFaceTexture(part, NID_LEFT, eNX and side or nil)
     setFaceTexture(part, NID_BACK, ePZ and side or nil)
@@ -460,15 +471,16 @@ function ChunkMesher.UpdateBlockCell(bc: BlockChunk, wx: number, y: number, wz: 
     local part = bc.cells[key]
 
     local id = worldBlockAt(wx, wz, y)
-    local ePX, eNX, ePY, ePZ, eNZ = false, false, false, false, false
+    local ePX, eNX, ePY, eNY, ePZ, eNZ = false, false, false, false, false, false
     local exposed = false
     if id ~= BLOCK_AIR then
         ePX = not isOpaque(worldBlockAt(wx + 1, wz, y))
         eNX = not isOpaque(worldBlockAt(wx - 1, wz, y))
         ePY = not isOpaque(worldBlockAt(wx, wz, y + 1))
+        eNY = not isOpaque(worldBlockAt(wx, wz, y - 1))
         ePZ = not isOpaque(worldBlockAt(wx, wz + 1, y))
         eNZ = not isOpaque(worldBlockAt(wx, wz - 1, y))
-        exposed = ePX or eNX or ePY or ePZ or eNZ -- bottom never counts
+        exposed = ePX or eNX or ePY or eNY or ePZ or eNZ
     end
 
     if not exposed then
@@ -487,7 +499,7 @@ function ChunkMesher.UpdateBlockCell(bc: BlockChunk, wx: number, y: number, wz: 
         bc.cells[key] = part
     end
     applyBlockAppearance(part, id)
-    applyCellFaces(part, id, ePX, eNX, ePY, ePZ, eNZ)
+    applyCellFaces(part, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
 end
 
 -- Build the whole chunk as per-cell parts (used when a chunk first gets edited).
@@ -500,16 +512,22 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
     local Hgrid = table.create(slab, 0)
     local Bgrid = table.create(slab, 0)
     local maxY = 0
+    local hasGrass = false
     for z = -1, CS do
         for x = -1, CS do
             local h, b = getColumn(cx * CS + x, cz * CS + z)
             local i = (x + 1) + (z + 1) * GW + 1
             Hgrid[i] = h
             Bgrid[i] = b
+            if GRASS_BIOMES[b] then hasGrass = true end
             if x >= 0 and x < CS and z >= 0 and z < CS and h > maxY then
                 maxY = h
             end
         end
+    end
+    -- Trees sit in the air above the surface; raise the range to fit their canopy.
+    if hasGrass then
+        maxY += TREE_MAX_H
     end
     local gLo = CAVE_FLOOR
     local emin, emax = WorldDiff.chunkYBounds(cx, cz)
@@ -553,16 +571,16 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
                     local ePX = not opaque(x + 1, y, z)
                     local eNX = not opaque(x - 1, y, z)
                     local ePY = not opaque(x, y + 1, z)
+                    local eNY = not opaque(x, y - 1, z)
                     local ePZ = not opaque(x, y, z + 1)
                     local eNZ = not opaque(x, y, z - 1)
-                    -- bottom (eNY) is never drawn in block mode
-                    if ePX or eNX or ePY or ePZ or eNZ then
+                    if ePX or eNX or ePY or eNY or ePZ or eNZ then
                         local wx, wz = cx * CS + x, cz * CS + z
                         local part = getPooledPart()
                         part.Size = V3(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
                         part.CFrame = CFrame.new((wx + 0.5) * BLOCK_SIZE, (y + 0.5) * BLOCK_SIZE, (wz + 0.5) * BLOCK_SIZE)
                         applyBlockAppearance(part, id)
-                        applyCellFaces(part, id, ePX, eNX, ePY, ePZ, eNZ)
+                        applyCellFaces(part, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
                         part.Parent = model
                         cells[cellKey(wx, y, wz)] = part
                     end

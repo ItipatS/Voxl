@@ -175,6 +175,113 @@ local CAVE_END_OFFSET = 6      -- caves stop this many blocks below the surface.
 local CAVE_THRESHOLD = 0.45
 local ENTRANCE_THRESHOLD = 0.62 -- ...except in these regions, where they open up
 
+-- ===================== Trees (deterministic decoration) =====================
+-- Trees are generated, not stored: both client & server derive them from coords.
+-- The world is tiled into TREE_CELL×TREE_CELL cells; each cell has one hashed
+-- candidate position. A candidate becomes a tree only in a grass biome above
+-- water. blockAt() adds trunk/leaf blocks into the air above the surface, so the
+-- mesher must raise its Y range by TREE_MAX_H over grass to fit the canopy.
+local TREE_CELL = 5
+local TREE_MAX_H = 10 -- tallest trunk (6) + canopy above (~3), + margin
+
+local function hash2(x: number, z: number): number
+    local h = bit32.band(x * 0x1f1f3d1f + z * 0x9e3779b1, 0xffffffff)
+    h = bit32.bxor(h, bit32.rshift(h, 16))
+    h = bit32.band(h * 0x85ebca6b, 0xffffffff)
+    h = bit32.bxor(h, bit32.rshift(h, 13))
+    return h
+end
+
+local function hash3(x: number, y: number, z: number): number
+    return hash2(hash2(x, z) + y * 0x27d4eb2f, y)
+end
+
+-- Block a tree rooted at its origin contributes at offset (dx,dy,dz); dy is height
+-- above the origin's surface. Trunk is a column; canopy is a trimmed sphere.
+local function treeShape(dx: number, dy: number, dz: number, seed: number, wx: number, y: number, wz: number): number
+    local H = 5 + (seed % 3) -- trunk height 5..7
+    if dx == 0 and dz == 0 and dy >= 1 and dy <= H then
+        return BLOCK.OakLog
+    end
+    -- Full, rounded canopy: a fat ellipsoid wrapping the top few trunk blocks
+    -- (from 3 below the top to 2 above), only lightly trimmed at the very edge.
+    local vy = dy - H
+    if vy >= -3 and vy <= 2 then
+        local d2 = dx * dx + dz * dz + vy * vy * 1.15
+        local rad = 2.9
+        if d2 <= rad * rad then
+            if d2 > (rad - 0.8) * (rad - 0.8) and (hash3(wx, y, wz) % 100) < 22 then
+                return BLOCK.Air
+            end
+            return BLOCK.OakLeaves
+        end
+    end
+    return BLOCK.Air
+end
+
+-- Whether a grid cell holds a tree is fixed & expensive to decide (needs the
+-- origin column's biome/height), so memoize it per cell. blockAt() hits the same
+-- ~9 cells for every Y in a column, so this collapses thousands of getColumn calls
+-- per chunk down to a couple dozen. Deterministic → the cache never invalidates.
+type TreeInfo = { wx0: number, wz0: number, surf0: number, seed: number }
+local treeCache: { [number]: { [number]: TreeInfo | false } } = {}
+local treeCacheN = 0
+
+local function treeAtCell(gx: number, gz: number): TreeInfo | false
+    local col = treeCache[gx]
+    if col then
+        local c = col[gz]
+        if c ~= nil then
+            return c
+        end
+    else
+        col = {}
+        treeCache[gx] = col
+    end
+
+    local h = hash2(gx, gz)
+    local result: TreeInfo | false = false
+    if (h % 100) < 60 then -- cheap gate before the costlier column lookup
+        local wx0 = gx * TREE_CELL + (h % TREE_CELL)
+        local wz0 = gz * TREE_CELL + (math.floor(h / TREE_CELL) % TREE_CELL)
+        local surf0, biome0 = WorldGen.getColumn(wx0, wz0)
+        -- Forests are dense, plains sparse; nothing on sand/stone/snow or in water.
+        if surf0 >= WATER_LEVEL and surf0 >= 55 then
+            if biome0 == 3 or (biome0 == 1 and (math.floor(h / 100) % 100) < 28) then
+                result = { wx0 = wx0, wz0 = wz0, surf0 = surf0, seed = h }
+            end
+        end
+    end
+
+    if treeCacheN > 20000 then
+        table.clear(treeCache)
+        treeCacheN = 0
+        treeCache[gx] = col
+    end
+    col[gz] = result
+    treeCacheN += 1
+    return result
+end
+
+-- Tree block (or Air) at a world cell, scanning candidate trees in the 3×3 cell
+-- neighbourhood (a canopy can reach a couple of blocks past its origin).
+local function treeBlockAt(wx: number, y: number, wz: number): number
+    local gx0 = math.floor(wx / TREE_CELL)
+    local gz0 = math.floor(wz / TREE_CELL)
+    for dgz = -1, 1 do
+        for dgx = -1, 1 do
+            local t = treeAtCell(gx0 + dgx, gz0 + dgz)
+            if t then
+                local b = treeShape(wx - t.wx0, y - t.surf0, wz - t.wz0, t.seed, wx, y, wz)
+                if b ~= BLOCK.Air then
+                    return b
+                end
+            end
+        end
+    end
+    return BLOCK.Air
+end
+
 export type ChunkFull = {
     cx: number,
     cz: number,
@@ -393,7 +500,11 @@ end
 -- client to render the true 3D terrain (surface + caves) with no data transfer.
 function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, biomeId: number): number
     local mat = WorldGen.materialAt(y, surfaceY, biomeId)
-    if mat == BLOCK.Air or y < CAVE_START_Y then
+    if mat == BLOCK.Air then
+        -- air above the surface: a tree (trunk/leaves) may occupy this cell
+        return treeBlockAt(wx, y, wz)
+    end
+    if y < CAVE_START_Y then
         return mat
     end
     -- In entrance regions the carve reaches the surface and cuts through soil too,
@@ -410,6 +521,7 @@ function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, b
 end
 
 WorldGen.CAVE_START_Y = CAVE_START_Y
+WorldGen.TREE_MAX_H = TREE_MAX_H
 WorldGen.CHUNK_SIZE = CHUNK_SIZE
 WorldGen.WORLD_HEIGHT = WORLD_HEIGHT
 WorldGen.BLOCK_SIZE = BLOCK_SIZE
