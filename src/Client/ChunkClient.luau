@@ -21,6 +21,11 @@ local BlockChunks: { [string]: any } = {} -- key -> per-cell BlockChunk (edited 
 
 local NEAR_RADIUS = 8            -- render radius (chunks)
 local UNLOAD_RADIUS = NEAR_RADIUS + 4
+-- Edited chunks go per-cell ("block mode") for instant editing, which costs many
+-- more parts. You can only edit within reach (~1 chunk), so once a block-mode
+-- chunk is this many chunks away it's demoted back to the cheap greedy mesh (it's
+-- all client-side; the greedy build is diff-aware so it still shows your edits).
+local ACTIVE_EDIT_RADIUS = 3
 -- Per-frame meshing is bounded by TIME, not a fixed count. This is self-adapting:
 -- cheap (flat/plains) chunks cost ~0.05 ms so we blast through ~100 in a frame,
 -- while an expensive mountain chunk (~5 ms) simply consumes the whole budget on
@@ -147,6 +152,24 @@ local function unloadFarChunks(pcx: number, pcz: number)
     end
 end
 
+-- Demote block-mode chunks that drifted out of edit range back to the cheap
+-- greedy mesh (diff-aware, so edits still show). One per frame to avoid a spike
+-- when leaving a large built-up area.
+local function demoteFarBlockChunks(pcx: number, pcz: number)
+    for key, bc in pairs(BlockChunks) do
+        local d = distToPlayer(key, pcx, pcz)
+        if d > ACTIVE_EDIT_RADIUS and d <= UNLOAD_RADIUS then
+            ChunkMesher.RecycleBlockChunk(bc)
+            BlockChunks[key] = nil
+            local chunk = ClientWorld[key]
+            if chunk then
+                MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks)
+            end
+            return -- at most one demotion per frame
+        end
+    end
+end
+
 RunService.RenderStepped:Connect(function()
     local character = localPlayer.Character
     local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -156,6 +179,7 @@ RunService.RenderStepped:Connect(function()
     local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
 
     unloadFarChunks(pcx, pcz)
+    demoteFarBlockChunks(pcx, pcz)
 
     -- Collect chunks the server has told us to load but that aren't meshed yet,
     -- tagged by squared distance to the player. Faces at chunk boundaries are
