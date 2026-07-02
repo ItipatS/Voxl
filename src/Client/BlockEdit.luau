@@ -12,18 +12,13 @@ local Workspace = game:GetService("Workspace")
 
 local blink = require(ReplicatedStorage.std.ClientNet)
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
+local Hotbar = require(script.Parent:WaitForChild("Hotbar"))
 
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
 local BLOCK = WorldGen.BLOCK
 local REACH = 10 * BLOCK_SIZE
 
 local localPlayer = Players.LocalPlayer
-
--- Hotbar palette (keys 1..N). Wire to the authored HotBar UI later.
-local PALETTE = {
-    BLOCK.Stone, BLOCK.Dirt, BLOCK.Grass, BLOCK.Sand, BLOCK.Snow, BLOCK.OakLog, BLOCK.OakLeaves,
-}
-local selected = 1
 
 -- Target cell outline.
 local Chunks = Workspace:WaitForChild("Chunks")
@@ -88,7 +83,7 @@ local function placeBlock()
     if not hit then return end
     local outside = hit.Position + hit.Normal * (BLOCK_SIZE * 0.5)
     local bx, by, bz = cellOf(outside)
-    blink.EditBlock.Fire({ wx = bx, y = by, wz = bz, block = PALETTE[selected] })
+    blink.EditBlock.Fire({ wx = bx, y = by, wz = bz, block = Hotbar.getSelectedBlock() })
 end
 
 RunService.RenderStepped:Connect(updateMarker)
@@ -99,12 +94,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
         breakBlock()
     elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
         placeBlock()
-    elseif input.KeyCode.Value >= Enum.KeyCode.One.Value and input.KeyCode.Value <= Enum.KeyCode.Nine.Value then
-        local n = input.KeyCode.Value - Enum.KeyCode.One.Value + 1
-        if PALETTE[n] then
-            selected = n
-        end
     end
+    -- Block selection (number keys / slot clicks) is owned by Hotbar.
 end)
 
 return {}

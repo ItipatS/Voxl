@@ -600,4 +600,7 @@ function ChunkMesher.RecycleBlockChunk(bc: BlockChunk)
     bc.model:Destroy()
 end
 
+-- Per-face textures per block id, for UI (hotbar previews) etc.
+ChunkMesher.BlockTextures = BlockTextures
+
 return ChunkMesher
