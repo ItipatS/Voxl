@@ -8,3 +8,5 @@ ReplicatedStorage:WaitForChild("Misc")
 
 -- ChunkClient wires the terrain networking (blink.LoadChunks) + meshing loop.
 require(script.Parent:WaitForChild("ChunkClient"))
+-- BlockEdit wires dig/place input.
+require(script.Parent:WaitForChild("BlockEdit"))

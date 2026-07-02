@@ -19,3 +19,27 @@ event UnloadChunks {
     Call: SingleSync,
     Data: string[]
 }
+
+-- A single block change: block 0 = broken (air), else the placed block id.
+struct BlockEdit {
+    wx: i32,
+    y: i32,
+    wz: i32,
+    block: u8,
+}
+
+-- Client asks the server to break/place a block.
+event EditBlock {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: BlockEdit
+}
+
+-- Server tells clients about applied edits (batched).
+event BlockEdited {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: BlockEdit[]
+}

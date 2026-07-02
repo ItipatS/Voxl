@@ -17,7 +17,7 @@ local start = require(ReplicatedStorage.std.start)
 
 -- Every server system, waited for by name so a partially-synced `systems` folder
 -- can never wire an incomplete set. Add new systems here.
-local SYSTEMS = { "ChunkServer", "players", "spawn" }
+local SYSTEMS = { "ChunkServer", "players", "spawn", "BlockEditServer" }
 
 local systemsFolder = script.Parent:WaitForChild("systems")
 local modules: { ModuleScript } = {}

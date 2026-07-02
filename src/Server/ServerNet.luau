@@ -161,7 +161,9 @@ local Queue: any = {
 
 local SerdesEvent = "?"
 local SerdesThread: thread?
+Queue.Reliable[2] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
+export type BlockEdit = { wx: number, y: number, wz: number, block: number }
 function SerdesFunctions.WriteEVENT_LoadChunks(Value: { { cx: number, cz: number } }): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
@@ -205,6 +207,47 @@ function SerdesFunctions.WriteEVENT_UnloadChunks(Value: { string }): ()
 	-- END ARRAY
 end
 
+function SerdesFunctions.ReadEVENT_EditBlock(): ({ wx: number, y: number, wz: number, block: number })
+	-- Read BLOCK: 13 bytes
+	local BLOCK_START = Read(13)
+	local Value = {} :: any
+	Value.wx = buffer.readi32(RecieveBuffer, BLOCK_START + 0)
+	Value.y = buffer.readi32(RecieveBuffer, BLOCK_START + 4)
+	Value.wz = buffer.readi32(RecieveBuffer, BLOCK_START + 8)
+	Value.block = buffer.readu8(RecieveBuffer, BLOCK_START + 12)
+	return Value
+end
+
+function SerdesFunctions.WriteEVENT_BlockEdited(Value: { { wx: number, y: number, wz: number, block: number } }): ()
+	-- Allocate BLOCK: 3 bytes
+	local BLOCK_START = Allocate(3)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 3)
+	-- START ARRAY
+	buffer.writeu16(SendBuffer, BLOCK_START + 1, #Value)
+		-- Allocate BLOCK: 13 bytes
+	local ARRAY_START_1 = Allocate(13 * #Value)
+	for Index = 1, #Value do
+		local Item_1 = Value[Index]
+		-- Allocate 4
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		buffer.writei32(SendBuffer, OPERATION_OFFSET_0, Item_1.wx)
+		-- Allocate 4
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		buffer.writei32(SendBuffer, OPERATION_OFFSET_1, Item_1.y)
+		-- Allocate 4
+		local OPERATION_OFFSET_2 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		buffer.writei32(SendBuffer, OPERATION_OFFSET_2, Item_1.wz)
+		-- Allocate 1
+		local OPERATION_OFFSET_3 = ARRAY_START_1
+		ARRAY_START_1 += 1
+		buffer.writeu8(SendBuffer, OPERATION_OFFSET_3, Item_1.block)
+	end
+	-- END ARRAY
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -215,6 +258,15 @@ if not RunService:IsRunning() then
 		FireExcept = NOOP
 	},
 	UnloadChunks = {
+		Fire = NOOP,
+		FireAll = NOOP,
+		FireList = NOOP,
+		FireExcept = NOOP
+	},
+	EditBlock = {
+		On = NOOP
+	},
+	BlockEdited = {
 		Fire = NOOP,
 		FireAll = NOOP,
 		FireList = NOOP,
@@ -282,6 +334,18 @@ Reliable.OnServerEvent:Connect(function(Player: Player, Buffer: buffer, Instance
 		-- Read BLOCK: 1 bytes
 		local BLOCK_START = Read(1)
 		local Index = buffer.readu8(RecieveBuffer, BLOCK_START + 0)
+		if Index == 2 then
+			local Value: { wx: number, y: number, wz: number, block: number } = SerdesFunctions.ReadEVENT_EditBlock()
+			if Events.Reliable[2] ~= nil then
+				SerdesEvent = "EditBlock"
+				Events.Reliable[2](Player, Value)
+			else
+				if #Queue.Reliable[2] > 256 then
+					warn("[Blink]: Event queue of \"EditBlock\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[2], {Player, Value} :: {any})
+			end
+		end
 	end
 end)
 Unreliable.OnServerEvent:Connect(function(Player: Player, Buffer: buffer, Instances: {Instance})
@@ -385,6 +449,66 @@ local Returns = table.freeze({
 		FireExcept = function(Except: Player, Value: { string }): ()
 			Load()
 			SerdesFunctions.WriteEVENT_UnloadChunks(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				if Player == Except then
+					continue
+				end
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+	},
+	EditBlock = {
+		On = function(Listener: (Player: Player, Value: { wx: number, y: number, wz: number, block: number }) -> ()): () -> ()
+			Events.Reliable[2] = Listener
+			for Index, Arguments in Queue.Reliable[2] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[2] = {}
+			return function (): ()
+				if Events.Reliable[2] == Listener then
+					Events.Reliable[2] = nil
+				end
+			end
+		end
+	},
+	BlockEdited = {
+		Fire = function(Player: Player, Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load(PlayersMap[Player])
+			SerdesFunctions.WriteEVENT_BlockEdited(Value)
+			PlayersMap[Player] = Save()
+		end,
+		FireAll = function(Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_BlockEdited(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireList = function(List: {Player}, Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_BlockEdited(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in List do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireExcept = function(Except: Player, Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_BlockEdited(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
 			for _, Player in Players:GetPlayers() do
 				if Player == Except then

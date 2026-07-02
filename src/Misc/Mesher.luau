@@ -101,14 +101,20 @@ local BlockTextures: { [number]: { top: string, bottom: string, side: string } }
     [BLOCK.OakLeaves] = { top = TEX.oakLeaf,  bottom = TEX.oakLeaf, side = TEX.oakLeaf },
 }
 
-local TexPool: { Texture } = {}
+-- Pooled PER IMAGE: a reused Texture already holds the right image, so its .Texture
+-- is never reassigned on re-mesh — no image re-decode, no whole-chunk flash on edit.
+local TexPools: { [string]: { Texture } } = {}
 
-local function getPooledTexture(): Texture
-    local t = table.remove(TexPool)
-    if t then
-        return t
+local function getPooledTexture(image: string): Texture
+    local pool = TexPools[image]
+    if pool then
+        local t = table.remove(pool)
+        if t then
+            return t
+        end
     end
-    t = Instance.new("Texture")
+    local t = Instance.new("Texture")
+    t.Texture = image
     t.StudsPerTileU = BLOCK_SIZE -- one image per block; tiles across merged faces
     t.StudsPerTileV = BLOCK_SIZE
     return t
@@ -116,14 +122,18 @@ end
 
 local function recycleTexture(t: Texture)
     t.Parent = nil
-    table.insert(TexPool, t)
+    local pool = TexPools[t.Texture]
+    if not pool then
+        pool = {}
+        TexPools[t.Texture] = pool
+    end
+    table.insert(pool, t)
 end
 
 -- Attach a textured face to a box part.
 local function addFace(part: BasePart, face: Enum.NormalId, image: string, tint: Color3?)
-    local t = getPooledTexture()
+    local t = getPooledTexture(image) -- already has .Texture = image
     t.Face = face
-    t.Texture = image
     t.Color3 = tint or Color3.new(1, 1, 1)
     t.Parent = part
 end
@@ -134,9 +144,12 @@ type Emit = (
     ePX: boolean, eNX: boolean, ePY: boolean, eNY: boolean, ePZ: boolean, eNZ: boolean
 ) -> ()
 
+local WorldDiff = require(ReplicatedStorage.Misc.WorldDiff)
+
 local V3 = Vector3.new
 local getColumn = WorldGen.getColumn
 local blockAt = WorldGen.blockAt
+local diffBlockAt = WorldDiff.blockAt
 local CAVE_FLOOR = WorldGen.CAVE_START_Y - 1
 
 local function runGreedy3D(chunk: ClientChunk, emit: Emit)
@@ -168,6 +181,18 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
 
     -- Full 3D range: caves reach down to CAVE_START_Y, so mesh [caveFloor, maxY].
     local gLo = CAVE_FLOOR
+
+    -- Player edits may sit above the surface (built up) or below the cave floor
+    -- (dug down); grow the range to cover them, and use the diff-aware sampler for
+    -- edited chunks (untouched chunks stay on the pure fast path).
+    local sample = blockAt
+    if WorldDiff.chunkHasEdits(cx, cz) then
+        sample = diffBlockAt
+        local emin, emax = WorldDiff.chunkYBounds(cx, cz)
+        if emax and emax > maxY then maxY = emax end
+        if emin and emin < gLo then gLo = emin end
+    end
+
     if gLo < 0 then gLo = 0 end
     local span = maxY - gLo + 1
     if span <= 0 then return end
@@ -180,7 +205,7 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
         for z = -1, CS do
             for x = -1, CS do
                 local i = (x + 1) + (z + 1) * GW + 1
-                grid[i + base] = blockAt(cx * CS + x, y, cz * CS + z, Hgrid[i], Bgrid[i])
+                grid[i + base] = sample(cx * CS + x, y, cz * CS + z, Hgrid[i], Bgrid[i])
             end
         end
     end

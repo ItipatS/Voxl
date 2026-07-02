@@ -162,7 +162,9 @@ local SerdesEvent = "?"
 local SerdesThread: thread?
 Queue.Reliable[0] = table.create(256)
 Queue.Reliable[1] = table.create(256)
+Queue.Reliable[3] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
+export type BlockEdit = { wx: number, y: number, wz: number, block: number }
 function SerdesFunctions.ReadEVENT_LoadChunks(): ({ { cx: number, cz: number } })
 	-- Read BLOCK: 2 bytes
 	local BLOCK_START = Read(2)
@@ -211,6 +213,50 @@ function SerdesFunctions.ReadEVENT_UnloadChunks(): ({ string })
 	return Value
 end
 
+function SerdesFunctions.WriteEVENT_EditBlock(Value: { wx: number, y: number, wz: number, block: number }): ()
+	-- Allocate BLOCK: 14 bytes
+	local BLOCK_START = Allocate(14)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 2)
+	buffer.writei32(SendBuffer, BLOCK_START + 1, Value.wx)
+	buffer.writei32(SendBuffer, BLOCK_START + 5, Value.y)
+	buffer.writei32(SendBuffer, BLOCK_START + 9, Value.wz)
+	buffer.writeu8(SendBuffer, BLOCK_START + 13, Value.block)
+end
+
+function SerdesFunctions.ReadEVENT_BlockEdited(): ({ { wx: number, y: number, wz: number, block: number } })
+	-- Read BLOCK: 2 bytes
+	local BLOCK_START = Read(2)
+	-- START ARRAY
+	local Length = buffer.readu16(RecieveBuffer, BLOCK_START + 0)
+	if Length < 0 then error(`Expected "Length" to be larger than 0, got {Length} instead.`) end
+	if Length > 65535 then error(`Expected "Length" to be smaller than 65535, got {Length} instead.`) end
+	local Value = table.create(Length)
+		-- Read BLOCK: 13 bytes
+	local ARRAY_START_1 = Read(13 * Length)
+	for Index = 1, Length do
+		local Item_1 = {} :: any
+		-- Read 4
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		Item_1.wx = buffer.readi32(RecieveBuffer, OPERATION_OFFSET_0)
+		-- Read 4
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		Item_1.y = buffer.readi32(RecieveBuffer, OPERATION_OFFSET_1)
+		-- Read 4
+		local OPERATION_OFFSET_2 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		Item_1.wz = buffer.readi32(RecieveBuffer, OPERATION_OFFSET_2)
+		-- Read 1
+		local OPERATION_OFFSET_3 = ARRAY_START_1
+		ARRAY_START_1 += 1
+		Item_1.block = buffer.readu8(RecieveBuffer, OPERATION_OFFSET_3)
+		table.insert(Value, Item_1)
+	end
+	-- END ARRAY
+	return Value
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -218,6 +264,12 @@ if not RunService:IsRunning() then
 		On = NOOP
 	},
 	UnloadChunks = {
+		On = NOOP
+	},
+	EditBlock = {
+		Fire = NOOP
+	},
+	BlockEdited = {
 		On = NOOP
 	},
 	})
@@ -284,6 +336,17 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 				end
 				table.insert(Queue.Reliable[1], {Value} :: {any})
 			end
+		elseif Index == 3 then
+			local Value: { { wx: number, y: number, wz: number, block: number } } = SerdesFunctions.ReadEVENT_BlockEdited()
+			if Events.Reliable[3] ~= nil then
+				SerdesEvent = "BlockEdited"
+				Events.Reliable[3](Value)
+			else
+				if #Queue.Reliable[3] > 256 then
+					warn("[Blink]: Event queue of \"BlockEdited\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[3], {Value} :: {any})
+			end
 		end
 	end
 end)
@@ -333,6 +396,25 @@ local Returns = table.freeze({
 			return function (): ()
 				if Events.Reliable[1] == Listener then
 					Events.Reliable[1] = nil
+				end
+			end
+		end
+	},
+	EditBlock = {
+		Fire = function(Value: { wx: number, y: number, wz: number, block: number }): ()
+			SerdesFunctions.WriteEVENT_EditBlock(Value)
+		end
+	},
+	BlockEdited = {
+		On = function(Listener: (Value: { { wx: number, y: number, wz: number, block: number } }) -> ()): () -> ()
+			Events.Reliable[3] = Listener
+			for Index, Arguments in Queue.Reliable[3] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[3] = {}
+			return function (): ()
+				if Events.Reliable[3] == Listener then
+					Events.Reliable[3] = nil
 				end
 			end
 		end

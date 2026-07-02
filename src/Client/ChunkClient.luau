@@ -9,6 +9,7 @@ local blink = require(std.ClientNet)
 
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
 local ChunkMesher = require(ReplicatedStorage.Misc.Mesher)
+local WorldDiff = require(ReplicatedStorage.Misc.WorldDiff)
 
 local CHUNK_SIZE = WorldGen.CHUNK_SIZE
 local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
@@ -73,6 +74,43 @@ blink.UnloadChunks.On(function(payloads)
             MeshedChunks[key] = nil
         end
         ClientWorld[key] = nil
+    end
+end)
+
+-- Rebuild a chunk immediately (used after an edit); the diff is already applied.
+local function remeshChunk(cx: number, cz: number)
+    local key = chunkKey(cx, cz)
+    local model = MeshedChunks[key]
+    if model then
+        ChunkMesher.RecycleChunkModel(model)
+        MeshedChunks[key] = nil
+    end
+    if ClientWorld[key] then
+        MeshedChunks[key] = ChunkMesher.BuildChunk(ClientWorld[key], Chunks)
+    end
+end
+
+-- Apply server-confirmed edits into the overlay and re-mesh the touched chunks
+-- (plus a border neighbor when the edit is on a chunk edge, since its face changes).
+blink.BlockEdited.On(function(list)
+    local dirty: { [string]: { number } } = {}
+    local function mark(cx, cz)
+        dirty[chunkKey(cx, cz)] = { cx, cz }
+    end
+    for _, e in list do
+        WorldDiff.set(e.wx, e.y, e.wz, e.block)
+        local cx = math.floor(e.wx / CHUNK_SIZE)
+        local cz = math.floor(e.wz / CHUNK_SIZE)
+        mark(cx, cz)
+        local lx = e.wx - cx * CHUNK_SIZE
+        local lz = e.wz - cz * CHUNK_SIZE
+        if lx == 0 then mark(cx - 1, cz) end
+        if lx == CHUNK_SIZE - 1 then mark(cx + 1, cz) end
+        if lz == 0 then mark(cx, cz - 1) end
+        if lz == CHUNK_SIZE - 1 then mark(cx, cz + 1) end
+    end
+    for _, c in dirty do
+        remeshChunk(c[1], c[2])
     end
 end)
 
