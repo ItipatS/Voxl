@@ -10,7 +10,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
-local Mesher = require(ReplicatedStorage.Misc.Mesher)
+local BlockPreview = require(script.Parent:WaitForChild("BlockPreview"))
+local BlockInventory = require(script.Parent:WaitForChild("BlockInventory"))
 local BLOCK = WorldGen.BLOCK
 
 local localPlayer = Players.LocalPlayer
@@ -30,49 +31,38 @@ local function slotFor(i: number): Instance?
     return hotbar:FindFirstChild("Slot" .. i)
 end
 
--- Build a small isometric 3D block inside a slot's ViewportFrame.
+-- Show a block preview in a slot's ViewportFrame.
 local function fillSlot(slot: Instance, blockId: number)
     local vpf = slot:FindFirstChild("ViewportFrame") :: ViewportFrame?
-    if not vpf then
-        return
+    if vpf then
+        BlockPreview.build(vpf, blockId)
     end
-    for _, c in vpf:GetChildren() do
-        if c:IsA("BasePart") or c:IsA("Camera") then
-            c:Destroy()
+end
+
+-- Reflect owned counts on each slot's Quantity label; dim slots you can't place.
+local function updateCounts()
+    for i = 1, SLOTS do
+        local slot = slotFor(i)
+        if slot then
+            local block = PALETTE[i]
+            local q = slot:FindFirstChild("Quantity") :: TextLabel?
+            if block then
+                local count = BlockInventory.getCount(block)
+                if q then
+                    q.Text = tostring(count)
+                    q.Visible = true
+                end
+                if slot:IsA("ImageButton") then
+                    slot.ImageTransparency = if count > 0 then 0 else 0.55
+                end
+            else
+                if q then
+                    q.Text = ""
+                    q.Visible = false
+                end
+            end
         end
     end
-    local tex = Mesher.BlockTextures[blockId]
-    if not tex then
-        return
-    end
-
-    local part = Instance.new("Part")
-    part.Size = Vector3.new(2, 2, 2)
-    part.CFrame = CFrame.new()
-    part.Anchored = true
-    part.Material = Enum.Material.SmoothPlastic
-    local function face(nid: Enum.NormalId, img: string)
-        local t = Instance.new("Texture")
-        t.Texture = img
-        t.Face = nid
-        t.StudsPerTileU = 2
-        t.StudsPerTileV = 2
-        t.Parent = part
-    end
-    face(Enum.NormalId.Top, tex.top)
-    face(Enum.NormalId.Front, tex.side)
-    face(Enum.NormalId.Right, tex.side)
-    part.Parent = vpf
-
-    local cam = Instance.new("Camera")
-    cam.FieldOfView = 18
-    cam.CFrame = CFrame.lookAt(Vector3.new(3.4, 2.7, 3.4), Vector3.new(0, -0.15, 0))
-    vpf.CurrentCamera = cam
-    cam.Parent = vpf
-    vpf.Ambient = Color3.fromRGB(220, 220, 220)
-    vpf.LightColor = Color3.fromRGB(255, 255, 255)
-    vpf.LightDirection = Vector3.new(-1, -1, -0.6)
-    vpf.BackgroundTransparency = 1
 end
 
 local function highlight(active: number)
@@ -117,6 +107,9 @@ for i = 1, SLOTS do
     end
 end
 highlight(selected)
+
+BlockInventory.onChanged(updateCounts)
+updateCounts()
 
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then

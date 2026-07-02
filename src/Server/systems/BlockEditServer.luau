@@ -13,9 +13,11 @@ local blink = require(game:GetService("ServerScriptService").ServerNet)
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
 local WorldDiff = require(ReplicatedStorage.Misc.WorldDiff)
 local WorldStore = require(script.Parent.WorldStore)
+local PlayerStore = require(script.Parent.PlayerStore)
 
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
 local BLOCK = WorldGen.BLOCK
+local getColumn = WorldGen.getColumn
 local REACH_STUDS = 10 * BLOCK_SIZE -- how far a player can edit from their root
 
 -- Blocks a client is allowed to place (Air = break is always allowed).
@@ -52,6 +54,23 @@ blink.EditBlock.On(function(player: Player, edit)
     end
 
     -- TODO: lock/claim permission check goes here (unclaimed land is free for now).
+
+    -- Inventory: breaking mines the block you remove; placing consumes one.
+    local surfaceY, biomeId = getColumn(edit.wx, edit.wz)
+    local current = WorldDiff.blockAt(edit.wx, edit.y, edit.wz, surfaceY, biomeId)
+    if block == BLOCK.Air then
+        if current == BLOCK.Air then
+            return -- nothing to break
+        end
+        PlayerStore.add(player, current, 1)
+    else
+        if current ~= BLOCK.Air then
+            return -- cell already occupied
+        end
+        if not PlayerStore.consume(player, block, 1) then
+            return -- player has none of this block
+        end
+    end
 
     WorldDiff.set(edit.wx, edit.y, edit.wz, block)
     WorldStore.record(edit.wx, edit.y, edit.wz, block)

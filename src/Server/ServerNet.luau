@@ -164,6 +164,7 @@ local SerdesThread: thread?
 Queue.Reliable[2] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
+export type BlockCount = { block: number, count: number }
 function SerdesFunctions.WriteEVENT_LoadChunks(Value: { { cx: number, cz: number } }): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
@@ -278,6 +279,28 @@ function SerdesFunctions.WriteEVENT_SyncDiff(Value: { { wx: number, y: number, w
 	-- END ARRAY
 end
 
+function SerdesFunctions.WriteEVENT_InventorySync(Value: { { block: number, count: number } }): ()
+	-- Allocate BLOCK: 3 bytes
+	local BLOCK_START = Allocate(3)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 5)
+	-- START ARRAY
+	buffer.writeu16(SendBuffer, BLOCK_START + 1, #Value)
+		-- Allocate BLOCK: 5 bytes
+	local ARRAY_START_1 = Allocate(5 * #Value)
+	for Index = 1, #Value do
+		local Item_1 = Value[Index]
+		-- Allocate 1
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 1
+		buffer.writeu8(SendBuffer, OPERATION_OFFSET_0, Item_1.block)
+		-- Allocate 4
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		buffer.writeu32(SendBuffer, OPERATION_OFFSET_1, Item_1.count)
+	end
+	-- END ARRAY
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -303,6 +326,12 @@ if not RunService:IsRunning() then
 		FireExcept = NOOP
 	},
 	SyncDiff = {
+		Fire = NOOP,
+		FireAll = NOOP,
+		FireList = NOOP,
+		FireExcept = NOOP
+	},
+	InventorySync = {
 		Fire = NOOP,
 		FireAll = NOOP,
 		FireList = NOOP,
@@ -591,6 +620,52 @@ local Returns = table.freeze({
 		FireExcept = function(Except: Player, Value: { { wx: number, y: number, wz: number, block: number } }): ()
 			Load()
 			SerdesFunctions.WriteEVENT_SyncDiff(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				if Player == Except then
+					continue
+				end
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+	},
+	InventorySync = {
+		Fire = function(Player: Player, Value: { { block: number, count: number } }): ()
+			Load(PlayersMap[Player])
+			SerdesFunctions.WriteEVENT_InventorySync(Value)
+			PlayersMap[Player] = Save()
+		end,
+		FireAll = function(Value: { { block: number, count: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_InventorySync(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireList = function(List: {Player}, Value: { { block: number, count: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_InventorySync(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in List do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireExcept = function(Except: Player, Value: { { block: number, count: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_InventorySync(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
 			for _, Player in Players:GetPlayers() do
 				if Player == Except then

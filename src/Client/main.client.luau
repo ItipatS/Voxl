@@ -8,8 +8,11 @@ ReplicatedStorage:WaitForChild("Misc")
 
 -- ChunkClient wires the terrain networking (blink.LoadChunks) + meshing loop.
 require(script.Parent:WaitForChild("ChunkClient"))
--- Hotbar drives block selection; BlockEdit wires dig/place input.
+-- Block inventory (server-synced counts) feeds the hotbar; register its listener
+-- early. Hotbar drives block selection; BlockEdit wires dig/place input.
+require(script.Parent:WaitForChild("BlockInventory"))
 require(script.Parent:WaitForChild("Hotbar"))
 require(script.Parent:WaitForChild("BlockEdit"))
--- Inventory window open/close (Bag button / Exit / E key).
+-- Inventory window open/close (Bag button / Exit / E key) + block grid render.
 require(script.Parent:WaitForChild("InventoryToggle"))
+require(script.Parent:WaitForChild("InventoryRender"))

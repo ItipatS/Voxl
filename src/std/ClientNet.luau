@@ -164,8 +164,10 @@ Queue.Reliable[0] = table.create(256)
 Queue.Reliable[1] = table.create(256)
 Queue.Reliable[3] = table.create(256)
 Queue.Reliable[4] = table.create(256)
+Queue.Reliable[5] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
+export type BlockCount = { block: number, count: number }
 function SerdesFunctions.ReadEVENT_LoadChunks(): ({ { cx: number, cz: number } })
 	-- Read BLOCK: 2 bytes
 	local BLOCK_START = Read(2)
@@ -292,6 +294,32 @@ function SerdesFunctions.ReadEVENT_SyncDiff(): ({ { wx: number, y: number, wz: n
 	return Value
 end
 
+function SerdesFunctions.ReadEVENT_InventorySync(): ({ { block: number, count: number } })
+	-- Read BLOCK: 2 bytes
+	local BLOCK_START = Read(2)
+	-- START ARRAY
+	local Length = buffer.readu16(RecieveBuffer, BLOCK_START + 0)
+	if Length < 0 then error(`Expected "Length" to be larger than 0, got {Length} instead.`) end
+	if Length > 65535 then error(`Expected "Length" to be smaller than 65535, got {Length} instead.`) end
+	local Value = table.create(Length)
+		-- Read BLOCK: 5 bytes
+	local ARRAY_START_1 = Read(5 * Length)
+	for Index = 1, Length do
+		local Item_1 = {} :: any
+		-- Read 1
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 1
+		Item_1.block = buffer.readu8(RecieveBuffer, OPERATION_OFFSET_0)
+		-- Read 4
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		Item_1.count = buffer.readu32(RecieveBuffer, OPERATION_OFFSET_1)
+		table.insert(Value, Item_1)
+	end
+	-- END ARRAY
+	return Value
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -308,6 +336,9 @@ if not RunService:IsRunning() then
 		On = NOOP
 	},
 	SyncDiff = {
+		On = NOOP
+	},
+	InventorySync = {
 		On = NOOP
 	},
 	})
@@ -396,6 +427,17 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 				end
 				table.insert(Queue.Reliable[4], {Value} :: {any})
 			end
+		elseif Index == 5 then
+			local Value: { { block: number, count: number } } = SerdesFunctions.ReadEVENT_InventorySync()
+			if Events.Reliable[5] ~= nil then
+				SerdesEvent = "InventorySync"
+				Events.Reliable[5](Value)
+			else
+				if #Queue.Reliable[5] > 256 then
+					warn("[Blink]: Event queue of \"InventorySync\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[5], {Value} :: {any})
+			end
 		end
 	end
 end)
@@ -478,6 +520,20 @@ local Returns = table.freeze({
 			return function (): ()
 				if Events.Reliable[4] == Listener then
 					Events.Reliable[4] = nil
+				end
+			end
+		end
+	},
+	InventorySync = {
+		On = function(Listener: (Value: { { block: number, count: number } }) -> ()): () -> ()
+			Events.Reliable[5] = Listener
+			for Index, Arguments in Queue.Reliable[5] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[5] = {}
+			return function (): ()
+				if Events.Reliable[5] == Listener then
+					Events.Reliable[5] = nil
 				end
 			end
 		end

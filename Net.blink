@@ -52,3 +52,17 @@ event SyncDiff {
     Call: SingleSync,
     Data: BlockEdit[]
 }
+
+-- One block type's owned count in a player's inventory.
+struct BlockCount {
+    block: u8,
+    count: u32,
+}
+
+-- Server pushes the player's full block inventory (on join and after changes).
+event InventorySync {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: BlockCount[]
+}
