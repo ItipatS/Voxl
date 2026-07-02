@@ -248,6 +248,36 @@ function SerdesFunctions.WriteEVENT_BlockEdited(Value: { { wx: number, y: number
 	-- END ARRAY
 end
 
+function SerdesFunctions.WriteEVENT_SyncDiff(Value: { { wx: number, y: number, wz: number, block: number } }): ()
+	-- Allocate BLOCK: 3 bytes
+	local BLOCK_START = Allocate(3)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 4)
+	-- START ARRAY
+	buffer.writeu16(SendBuffer, BLOCK_START + 1, #Value)
+		-- Allocate BLOCK: 13 bytes
+	local ARRAY_START_1 = Allocate(13 * #Value)
+	for Index = 1, #Value do
+		local Item_1 = Value[Index]
+		-- Allocate 4
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		buffer.writei32(SendBuffer, OPERATION_OFFSET_0, Item_1.wx)
+		-- Allocate 4
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		buffer.writei32(SendBuffer, OPERATION_OFFSET_1, Item_1.y)
+		-- Allocate 4
+		local OPERATION_OFFSET_2 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		buffer.writei32(SendBuffer, OPERATION_OFFSET_2, Item_1.wz)
+		-- Allocate 1
+		local OPERATION_OFFSET_3 = ARRAY_START_1
+		ARRAY_START_1 += 1
+		buffer.writeu8(SendBuffer, OPERATION_OFFSET_3, Item_1.block)
+	end
+	-- END ARRAY
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -267,6 +297,12 @@ if not RunService:IsRunning() then
 		On = NOOP
 	},
 	BlockEdited = {
+		Fire = NOOP,
+		FireAll = NOOP,
+		FireList = NOOP,
+		FireExcept = NOOP
+	},
+	SyncDiff = {
 		Fire = NOOP,
 		FireAll = NOOP,
 		FireList = NOOP,
@@ -509,6 +545,52 @@ local Returns = table.freeze({
 		FireExcept = function(Except: Player, Value: { { wx: number, y: number, wz: number, block: number } }): ()
 			Load()
 			SerdesFunctions.WriteEVENT_BlockEdited(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				if Player == Except then
+					continue
+				end
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+	},
+	SyncDiff = {
+		Fire = function(Player: Player, Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load(PlayersMap[Player])
+			SerdesFunctions.WriteEVENT_SyncDiff(Value)
+			PlayersMap[Player] = Save()
+		end,
+		FireAll = function(Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_SyncDiff(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireList = function(List: {Player}, Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_SyncDiff(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in List do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireExcept = function(Except: Player, Value: { { wx: number, y: number, wz: number, block: number } }): ()
+			Load()
+			SerdesFunctions.WriteEVENT_SyncDiff(Value)
 			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
 			for _, Player in Players:GetPlayers() do
 				if Player == Except then

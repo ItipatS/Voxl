@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local blink = require(game:GetService("ServerScriptService").ServerNet)
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
 local WorldDiff = require(ReplicatedStorage.Misc.WorldDiff)
+local WorldStore = require(script.Parent.WorldStore)
 
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
 local BLOCK = WorldGen.BLOCK
@@ -53,6 +54,7 @@ blink.EditBlock.On(function(player: Player, edit)
     -- TODO: lock/claim permission check goes here (unclaimed land is free for now).
 
     WorldDiff.set(edit.wx, edit.y, edit.wz, block)
+    WorldStore.record(edit.wx, edit.y, edit.wz, block)
     blink.BlockEdited.FireAll({ { wx = edit.wx, y = edit.y, wz = edit.wz, block = block } })
 end)
 

@@ -17,6 +17,8 @@ local start = require(ReplicatedStorage.std.start)
 
 -- Every server system, waited for by name so a partially-synced `systems` folder
 -- can never wire an incomplete set. Add new systems here.
+-- WorldStore is a service required directly by BlockEditServer (not a scheduler
+-- system), so it's not listed here.
 local SYSTEMS = { "ChunkServer", "players", "spawn", "BlockEditServer" }
 
 local systemsFolder = script.Parent:WaitForChild("systems")

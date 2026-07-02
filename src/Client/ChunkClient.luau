@@ -130,6 +130,35 @@ blink.BlockEdited.On(function(list)
     end
 end)
 
+-- Bulk-apply the persisted world diff sent on join. Unlike live edits this stays
+-- greedy: update the overlay and drop the touched chunks' meshes so they rebuild
+-- diff-aware (nearest-first, within the frame budget).
+blink.SyncDiff.On(function(list)
+    local dirty: { [string]: boolean } = {}
+    local function mark(cx: number, cz: number)
+        dirty[chunkKey(cx, cz)] = true
+    end
+    for _, e in list do
+        WorldDiff.set(e.wx, e.y, e.wz, e.block)
+        local cx = math.floor(e.wx / CHUNK_SIZE)
+        local cz = math.floor(e.wz / CHUNK_SIZE)
+        mark(cx, cz)
+        local lx = e.wx - cx * CHUNK_SIZE
+        local lz = e.wz - cz * CHUNK_SIZE
+        if lx == 0 then mark(cx - 1, cz) end
+        if lx == CHUNK_SIZE - 1 then mark(cx + 1, cz) end
+        if lz == 0 then mark(cx, cz - 1) end
+        if lz == CHUNK_SIZE - 1 then mark(cx, cz + 1) end
+    end
+    for key in dirty do
+        local m = MeshedChunks[key]
+        if m then
+            ChunkMesher.RecycleChunkModel(m)
+            MeshedChunks[key] = nil -- RenderStepped rebuilds it diff-aware
+        end
+    end
+end)
+
 local candidates = {} -- reused each frame: unmeshed chunks to build
 
 local function distToPlayer(key: string, pcx: number, pcz: number): number

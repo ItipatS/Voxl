@@ -163,6 +163,7 @@ local SerdesThread: thread?
 Queue.Reliable[0] = table.create(256)
 Queue.Reliable[1] = table.create(256)
 Queue.Reliable[3] = table.create(256)
+Queue.Reliable[4] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
 function SerdesFunctions.ReadEVENT_LoadChunks(): ({ { cx: number, cz: number } })
@@ -257,6 +258,40 @@ function SerdesFunctions.ReadEVENT_BlockEdited(): ({ { wx: number, y: number, wz
 	return Value
 end
 
+function SerdesFunctions.ReadEVENT_SyncDiff(): ({ { wx: number, y: number, wz: number, block: number } })
+	-- Read BLOCK: 2 bytes
+	local BLOCK_START = Read(2)
+	-- START ARRAY
+	local Length = buffer.readu16(RecieveBuffer, BLOCK_START + 0)
+	if Length < 0 then error(`Expected "Length" to be larger than 0, got {Length} instead.`) end
+	if Length > 65535 then error(`Expected "Length" to be smaller than 65535, got {Length} instead.`) end
+	local Value = table.create(Length)
+		-- Read BLOCK: 13 bytes
+	local ARRAY_START_1 = Read(13 * Length)
+	for Index = 1, Length do
+		local Item_1 = {} :: any
+		-- Read 4
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		Item_1.wx = buffer.readi32(RecieveBuffer, OPERATION_OFFSET_0)
+		-- Read 4
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		Item_1.y = buffer.readi32(RecieveBuffer, OPERATION_OFFSET_1)
+		-- Read 4
+		local OPERATION_OFFSET_2 = ARRAY_START_1
+		ARRAY_START_1 += 4
+		Item_1.wz = buffer.readi32(RecieveBuffer, OPERATION_OFFSET_2)
+		-- Read 1
+		local OPERATION_OFFSET_3 = ARRAY_START_1
+		ARRAY_START_1 += 1
+		Item_1.block = buffer.readu8(RecieveBuffer, OPERATION_OFFSET_3)
+		table.insert(Value, Item_1)
+	end
+	-- END ARRAY
+	return Value
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -270,6 +305,9 @@ if not RunService:IsRunning() then
 		Fire = NOOP
 	},
 	BlockEdited = {
+		On = NOOP
+	},
+	SyncDiff = {
 		On = NOOP
 	},
 	})
@@ -347,6 +385,17 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 				end
 				table.insert(Queue.Reliable[3], {Value} :: {any})
 			end
+		elseif Index == 4 then
+			local Value: { { wx: number, y: number, wz: number, block: number } } = SerdesFunctions.ReadEVENT_SyncDiff()
+			if Events.Reliable[4] ~= nil then
+				SerdesEvent = "SyncDiff"
+				Events.Reliable[4](Value)
+			else
+				if #Queue.Reliable[4] > 256 then
+					warn("[Blink]: Event queue of \"SyncDiff\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[4], {Value} :: {any})
+			end
 		end
 	end
 end)
@@ -415,6 +464,20 @@ local Returns = table.freeze({
 			return function (): ()
 				if Events.Reliable[3] == Listener then
 					Events.Reliable[3] = nil
+				end
+			end
+		end
+	},
+	SyncDiff = {
+		On = function(Listener: (Value: { { wx: number, y: number, wz: number, block: number } }) -> ()): () -> ()
+			Events.Reliable[4] = Listener
+			for Index, Arguments in Queue.Reliable[4] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[4] = {}
+			return function (): ()
+				if Events.Reliable[4] == Listener then
+					Events.Reliable[4] = nil
 				end
 			end
 		end

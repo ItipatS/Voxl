@@ -43,3 +43,12 @@ event BlockEdited {
     Call: SingleSync,
     Data: BlockEdit[]
 }
+
+-- Server sends the persisted world diff to a joining client (batched). Applied
+-- without switching chunks to block mode (bulk load, not live editing).
+event SyncDiff {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: BlockEdit[]
+}
