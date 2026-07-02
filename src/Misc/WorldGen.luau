@@ -158,10 +158,18 @@ local function sampleCaveNoise(wx: number, y: number, wz: number): number
     return noise3D(BASE_SEED + 500, wx * scale, y * scale, wz * scale)
 end
 
+-- Low-frequency 2D field marking scattered regions where caves are allowed to
+-- breach the surface (cave entrances). Elsewhere caves stay capped underground.
+local function sampleEntranceNoise(wx: number, wz: number): number
+    local scale = 0.02
+    return n01(noise2D(BASE_SEED + 600, wx * scale, wz * scale))
+end
+
 -- Cave carving parameters (module-level so client-side generation matches).
 local CAVE_START_Y = 20
-local CAVE_END_OFFSET = 6   -- caves stop this many blocks below the surface
+local CAVE_END_OFFSET = 6      -- caves stop this many blocks below the surface...
 local CAVE_THRESHOLD = 0.45
+local ENTRANCE_THRESHOLD = 0.62 -- ...except in these regions, where they open up
 
 export type ChunkFull = {
     cx: number,
@@ -377,11 +385,19 @@ function WorldGen.materialAt(y: number, surfaceY: number, biomeId: number): numb
     return BLOCK.Stone
 end
 
--- Full cave-aware block at a cell (carves caves out of stone). Used by the client
--- to render the true 3D terrain (surface + caves) with no data transfer.
+-- Full cave-aware block at a cell (carves caves out of the terrain). Used by the
+-- client to render the true 3D terrain (surface + caves) with no data transfer.
 function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, biomeId: number): number
     local mat = WorldGen.materialAt(y, surfaceY, biomeId)
-    if mat == BLOCK.Stone and y >= CAVE_START_Y and y <= surfaceY - CAVE_END_OFFSET then
+    if mat == BLOCK.Air or y < CAVE_START_Y then
+        return mat
+    end
+    -- In entrance regions the carve reaches the surface and cuts through soil too,
+    -- so caves open to the sky; elsewhere they stay capped a few blocks down and
+    -- only hollow out stone.
+    local entrance = sampleEntranceNoise(wx, wz) > ENTRANCE_THRESHOLD
+    local caveTop = if entrance then surfaceY else surfaceY - CAVE_END_OFFSET
+    if y <= caveTop and (entrance or mat == BLOCK.Stone) then
         if sampleCaveNoise(wx, y, wz) > CAVE_THRESHOLD then
             return BLOCK.Air
         end
