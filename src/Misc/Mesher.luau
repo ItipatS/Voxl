@@ -73,8 +73,66 @@ local function applyBlockAppearance(part: BasePart, blockId: number)
     part.Color = BlockColors[blockId] or Color3.fromRGB(255, 0, 255)
 end
 
+-- ========== textures (per-face Texture objects) ==========
+-- Each block face is its own image, upscaled to ~1600px so bilinear filtering stays
+-- crisp (3D Textures can't be point-filtered). A Texture tiles ONE image per block
+-- (StudsPerTile = BLOCK_SIZE), so it works across greedy-merged box faces and stays
+-- far lighter than SurfaceGuis.
+local TEX = {
+    stone    = "rbxassetid://84046704582684",
+    oakTop   = "rbxassetid://105200585443073", -- oak log top & bottom
+    oakSide  = "rbxassetid://120664114630276",
+    oakLeaf  = "rbxassetid://104131890534229",
+    debug    = "rbxassetid://78128038044643",  -- placeholder for unmapped blocks
+    grassTop = "rbxassetid://99956800911799",
+    grassSide= "rbxassetid://108714877040603",
+    dirt     = "rbxassetid://112826071106637", -- also grass bottom
+    snow     = "rbxassetid://121040441244210",
+    sand     = "rbxassetid://75605206965672",
+}
+
+local BlockTextures: { [number]: { top: string, bottom: string, side: string } } = {
+    [BLOCK.Grass]     = { top = TEX.grassTop, bottom = TEX.dirt,   side = TEX.grassSide },
+    [BLOCK.Dirt]      = { top = TEX.dirt,     bottom = TEX.dirt,   side = TEX.dirt },
+    [BLOCK.Sand]      = { top = TEX.sand,     bottom = TEX.sand,   side = TEX.sand },
+    [BLOCK.Stone]     = { top = TEX.stone,    bottom = TEX.stone,  side = TEX.stone },
+    [BLOCK.Snow]      = { top = TEX.snow,     bottom = TEX.snow,   side = TEX.snow },
+    [BLOCK.OakLog]    = { top = TEX.oakTop,   bottom = TEX.oakTop, side = TEX.oakSide },
+    [BLOCK.OakLeaves] = { top = TEX.oakLeaf,  bottom = TEX.oakLeaf, side = TEX.oakLeaf },
+}
+
+local TexPool: { Texture } = {}
+
+local function getPooledTexture(): Texture
+    local t = table.remove(TexPool)
+    if t then
+        return t
+    end
+    t = Instance.new("Texture")
+    t.StudsPerTileU = BLOCK_SIZE -- one image per block; tiles across merged faces
+    t.StudsPerTileV = BLOCK_SIZE
+    return t
+end
+
+local function recycleTexture(t: Texture)
+    t.Parent = nil
+    table.insert(TexPool, t)
+end
+
+-- Attach a textured face to a box part.
+local function addFace(part: BasePart, face: Enum.NormalId, image: string, tint: Color3?)
+    local t = getPooledTexture()
+    t.Face = face
+    t.Texture = image
+    t.Color3 = tint or Color3.new(1, 1, 1)
+    t.Parent = part
+end
+
 -- ========== 3D greedy on the generated surface shell ==========
-type Emit = (blockId: number, size: Vector3, center: Vector3) -> ()
+type Emit = (
+    blockId: number, size: Vector3, center: Vector3,
+    ePX: boolean, eNX: boolean, ePY: boolean, eNY: boolean, ePZ: boolean, eNZ: boolean
+) -> ()
 
 local V3 = Vector3.new
 local getColumn = WorldGen.getColumn
@@ -197,11 +255,35 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
                         end
                     end
 
+                    -- which of the box's 6 faces are exposed (touch air) — only
+                    -- those get textured, so hidden internal faces cost nothing.
+                    local yb, yt = gLo + ly, gLo + ly + hgt - 1
+                    local ePX, eNX, ePY, eNY, ePZ, eNZ = false, false, false, false, false, false
+                    for zz = z, z + d - 1 do
+                        for yy = yb, yt do
+                            if not solid(x + w, yy, zz) then ePX = true end
+                            if not solid(x - 1, yy, zz) then eNX = true end
+                        end
+                    end
+                    for xx = x, x + w - 1 do
+                        for yy = yb, yt do
+                            if not solid(xx, yy, z + d) then ePZ = true end
+                            if not solid(xx, yy, z - 1) then eNZ = true end
+                        end
+                    end
+                    for zz = z, z + d - 1 do
+                        for xx = x, x + w - 1 do
+                            if not solid(xx, yt + 1, zz) then ePY = true end
+                            if not solid(xx, yb - 1, zz) then eNY = true end
+                        end
+                    end
+
                     emit(mat,
                         V3(w * BLOCK_SIZE, hgt * BLOCK_SIZE, d * BLOCK_SIZE),
                         V3(baseX + (x + w * 0.5) * BLOCK_SIZE,
                             (gLo + ly + hgt * 0.5) * BLOCK_SIZE,
-                            baseZ + (z + d * 0.5) * BLOCK_SIZE))
+                            baseZ + (z + d * 0.5) * BLOCK_SIZE),
+                        ePX, eNX, ePY, eNY, ePZ, eNZ)
                 end
             end
         end
@@ -215,12 +297,22 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
     local model = Instance.new("Model")
     model.Name = "chunk_" .. chunkKey(chunk.cx, chunk.cz)
 
-    runGreedy3D(chunk, function(id, size, center)
+    runGreedy3D(chunk, function(id, size, center, ePX, eNX, ePY, eNY, ePZ, eNZ)
         local part = getPooledPart()
         part.Size = size
         part.CFrame = CFrame.new(center)
         applyBlockAppearance(part, id)
         part.Parent = model
+
+        local tex = BlockTextures[id]
+        if tex then
+            if ePY then addFace(part, Enum.NormalId.Top, tex.top) end
+            if eNY then addFace(part, Enum.NormalId.Bottom, tex.bottom) end
+            if ePX then addFace(part, Enum.NormalId.Right, tex.side) end
+            if eNX then addFace(part, Enum.NormalId.Left, tex.side) end
+            if ePZ then addFace(part, Enum.NormalId.Back, tex.side) end
+            if eNZ then addFace(part, Enum.NormalId.Front, tex.side) end
+        end
     end)
 
     model.Parent = parent
@@ -228,6 +320,12 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
 end
 
 local function recyclePart(part: BasePart)
+    -- return the box's textured faces to the pool, then the part itself
+    for _, ch in ipairs(part:GetChildren()) do
+        if ch:IsA("Texture") then
+            recycleTexture(ch)
+        end
+    end
     part.Parent = nil
     table.insert(PartPool, part)
 end
