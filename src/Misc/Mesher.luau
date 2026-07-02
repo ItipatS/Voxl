@@ -366,4 +366,171 @@ function ChunkMesher.RecycleChunkModel(model: Model)
     model:Destroy()
 end
 
+-- ========== block mode (per-cell, for edited chunks) ==========
+-- Once a chunk is edited it switches to one Part PER visible cell, indexed by
+-- world cell. Edits then only add/remove/update the touched cell + its neighbors
+-- (incremental), so breaking never rebuilds the big greedy parts that cause the
+-- ~0.5s render blink — break and place are both instant. Untouched chunks stay on
+-- the cheap greedy mesh.
+export type BlockChunk = { model: Model, cells: { [string]: BasePart } }
+
+local BLOCK_AIR = BLOCK.Air
+
+local function cellKey(wx: number, y: number, wz: number): string
+    return wx .. "," .. y .. "," .. wz
+end
+
+-- Resolved block id at a world cell (diff over deterministic base).
+local function worldBlockAt(wx: number, wz: number, y: number): number
+    local surfaceY, biome = getColumn(wx, wz)
+    return diffBlockAt(wx, y, wz, surfaceY, biome)
+end
+
+local NID_TOP = Enum.NormalId.Top
+local NID_BOTTOM = Enum.NormalId.Bottom
+local NID_RIGHT = Enum.NormalId.Right
+local NID_LEFT = Enum.NormalId.Left
+local NID_BACK = Enum.NormalId.Back
+local NID_FRONT = Enum.NormalId.Front
+
+local function makeCellPart(wx, y, wz, id, ePX, eNX, ePY, eNY, ePZ, eNZ): BasePart
+    local part = getPooledPart()
+    part.Size = V3(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+    part.CFrame = CFrame.new((wx + 0.5) * BLOCK_SIZE, (y + 0.5) * BLOCK_SIZE, (wz + 0.5) * BLOCK_SIZE)
+    applyBlockAppearance(part, id)
+    local tex = BlockTextures[id]
+    if tex then
+        if ePY then addFace(part, NID_TOP, tex.top) end
+        if eNY then addFace(part, NID_BOTTOM, tex.bottom) end
+        if ePX then addFace(part, NID_RIGHT, tex.side) end
+        if eNX then addFace(part, NID_LEFT, tex.side) end
+        if ePZ then addFace(part, NID_BACK, tex.side) end
+        if eNZ then addFace(part, NID_FRONT, tex.side) end
+    end
+    return part
+end
+
+-- Re-evaluate one cell: create / update / remove its part based on the current
+-- world. Called for the edited cell and each of its 6 neighbors.
+function ChunkMesher.UpdateBlockCell(bc: BlockChunk, wx: number, y: number, wz: number)
+    local key = cellKey(wx, y, wz)
+    local existing = bc.cells[key]
+
+    local id = worldBlockAt(wx, wz, y)
+    local ePX, eNX, ePY, eNY, ePZ, eNZ = false, false, false, false, false, false
+    local exposed = false
+    if id ~= BLOCK_AIR then
+        ePX = worldBlockAt(wx + 1, wz, y) == BLOCK_AIR
+        eNX = worldBlockAt(wx - 1, wz, y) == BLOCK_AIR
+        ePY = worldBlockAt(wx, wz, y + 1) == BLOCK_AIR
+        eNY = worldBlockAt(wx, wz, y - 1) == BLOCK_AIR
+        ePZ = worldBlockAt(wx, wz + 1, y) == BLOCK_AIR
+        eNZ = worldBlockAt(wx, wz - 1, y) == BLOCK_AIR
+        exposed = ePX or eNX or ePY or eNY or ePZ or eNZ
+    end
+
+    if not exposed then
+        if existing then
+            recyclePart(existing)
+            bc.cells[key] = nil
+        end
+        return
+    end
+
+    if existing then
+        recyclePart(existing)
+    end
+    local part = makeCellPart(wx, y, wz, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
+    part.Parent = bc.model
+    bc.cells[key] = part
+end
+
+-- Build the whole chunk as per-cell parts (used when a chunk first gets edited).
+function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): BlockChunk
+    local cx, cz = chunk.cx, chunk.cz
+    local CS = CHUNK_SIZE
+    local GW = CS + 2
+    local slab = GW * GW
+
+    local Hgrid = table.create(slab, 0)
+    local Bgrid = table.create(slab, 0)
+    local maxY = 0
+    for z = -1, CS do
+        for x = -1, CS do
+            local h, b = getColumn(cx * CS + x, cz * CS + z)
+            local i = (x + 1) + (z + 1) * GW + 1
+            Hgrid[i] = h
+            Bgrid[i] = b
+            if x >= 0 and x < CS and z >= 0 and z < CS and h > maxY then
+                maxY = h
+            end
+        end
+    end
+    local gLo = CAVE_FLOOR
+    local emin, emax = WorldDiff.chunkYBounds(cx, cz)
+    if emax and emax > maxY then maxY = emax end
+    if emin and emin < gLo then gLo = emin end
+    if gLo < 0 then gLo = 0 end
+    local span = maxY - gLo + 1
+
+    local model = Instance.new("Model")
+    model.Name = "bchunk_" .. cx .. ":" .. cz
+    local cells: { [string]: BasePart } = {}
+    if span <= 0 then
+        model.Parent = parent
+        return { model = model, cells = cells }
+    end
+
+    local grid = table.create(slab * span, 0)
+    for ly = 0, span - 1 do
+        local y = gLo + ly
+        local base = ly * slab
+        for z = -1, CS do
+            for x = -1, CS do
+                local i = (x + 1) + (z + 1) * GW + 1
+                grid[i + base] = diffBlockAt(cx * CS + x, y, cz * CS + z, Hgrid[i], Bgrid[i])
+            end
+        end
+    end
+    local function solid(gx, gy, gz): boolean
+        if gy > maxY then return false end
+        if gy < gLo then return true end
+        return grid[(gx + 1) + (gz + 1) * GW + (gy - gLo) * slab + 1] ~= 0
+    end
+
+    for ly = 0, span - 1 do
+        local y = gLo + ly
+        local sbase = ly * slab
+        for z = 0, CS - 1 do
+            for x = 0, CS - 1 do
+                local id = grid[(x + 1) + (z + 1) * GW + sbase + 1]
+                if id ~= 0 then
+                    local ePX = not solid(x + 1, y, z)
+                    local eNX = not solid(x - 1, y, z)
+                    local ePY = not solid(x, y + 1, z)
+                    local eNY = not solid(x, y - 1, z)
+                    local ePZ = not solid(x, y, z + 1)
+                    local eNZ = not solid(x, y, z - 1)
+                    if ePX or eNX or ePY or eNY or ePZ or eNZ then
+                        local wx, wz = cx * CS + x, cz * CS + z
+                        local part = makeCellPart(wx, y, wz, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
+                        part.Parent = model
+                        cells[cellKey(wx, y, wz)] = part
+                    end
+                end
+            end
+        end
+    end
+
+    model.Parent = parent
+    return { model = model, cells = cells }
+end
+
+function ChunkMesher.RecycleBlockChunk(bc: BlockChunk)
+    for _, part in bc.cells do
+        recyclePart(part)
+    end
+    bc.model:Destroy()
+end
+
 return ChunkMesher

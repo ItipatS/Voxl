@@ -16,7 +16,8 @@ local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 
 local chunkcount:number = 0
 
-local MeshedChunks = {}   -- key -> Model of block Parts (visual + collision)
+local MeshedChunks = {}   -- key -> greedy Model (untouched chunks)
+local BlockChunks: { [string]: any } = {} -- key -> per-cell BlockChunk (edited chunks)
 
 local NEAR_RADIUS = 8            -- render radius (chunks)
 local UNLOAD_RADIUS = NEAR_RADIUS + 4
@@ -73,56 +74,75 @@ blink.UnloadChunks.On(function(payloads)
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
         end
+        local bc = BlockChunks[key]
+        if bc then
+            ChunkMesher.RecycleBlockChunk(bc)
+            BlockChunks[key] = nil
+        end
         ClientWorld[key] = nil
     end
 end)
 
--- Rebuild a chunk immediately (used after an edit); the diff is already applied.
-local function remeshChunk(cx: number, cz: number)
+-- Edited chunks switch to per-cell "block mode" so edits are incremental (touch
+-- only the changed cell + neighbors) — no whole-chunk rebuild, no blink, and
+-- break/place are both instant. Untouched chunks stay on the greedy mesh.
+local function ensureBlockMode(cx: number, cz: number): ChunkMesher.BlockChunk?
     local key = chunkKey(cx, cz)
-    local model = MeshedChunks[key]
-    if model then
-        ChunkMesher.RecycleChunkModel(model)
+    local bc = BlockChunks[key]
+    if bc then
+        return bc
+    end
+    if not ClientWorld[key] then
+        return nil -- not loaded; the edit is in the diff and will show on load
+    end
+    local greedy = MeshedChunks[key]
+    if greedy then
+        ChunkMesher.RecycleChunkModel(greedy)
         MeshedChunks[key] = nil
     end
-    if ClientWorld[key] then
-        MeshedChunks[key] = ChunkMesher.BuildChunk(ClientWorld[key], Chunks)
-    end
+    bc = ChunkMesher.BuildBlockChunk(ClientWorld[key], Chunks)
+    BlockChunks[key] = bc
+    return bc
 end
 
--- Apply server-confirmed edits into the overlay and re-mesh the touched chunks
--- (plus a border neighbor when the edit is on a chunk edge, since its face changes).
+-- Apply server-confirmed edits into the overlay, then incrementally update the
+-- edited cell + its 6 neighbors (each in whatever chunk it belongs to).
 blink.BlockEdited.On(function(list)
-    local dirty: { [string]: { number } } = {}
-    local function mark(cx, cz)
-        dirty[chunkKey(cx, cz)] = { cx, cz }
-    end
     for _, e in list do
         WorldDiff.set(e.wx, e.y, e.wz, e.block)
-        local cx = math.floor(e.wx / CHUNK_SIZE)
-        local cz = math.floor(e.wz / CHUNK_SIZE)
-        mark(cx, cz)
-        local lx = e.wx - cx * CHUNK_SIZE
-        local lz = e.wz - cz * CHUNK_SIZE
-        if lx == 0 then mark(cx - 1, cz) end
-        if lx == CHUNK_SIZE - 1 then mark(cx + 1, cz) end
-        if lz == 0 then mark(cx, cz - 1) end
-        if lz == CHUNK_SIZE - 1 then mark(cx, cz + 1) end
-    end
-    for _, c in dirty do
-        remeshChunk(c[1], c[2])
+        local neighbors = {
+            { e.wx, e.y, e.wz },
+            { e.wx + 1, e.y, e.wz }, { e.wx - 1, e.y, e.wz },
+            { e.wx, e.y + 1, e.wz }, { e.wx, e.y - 1, e.wz },
+            { e.wx, e.y, e.wz + 1 }, { e.wx, e.y, e.wz - 1 },
+        }
+        for _, c in neighbors do
+            local bc = ensureBlockMode(math.floor(c[1] / CHUNK_SIZE), math.floor(c[3] / CHUNK_SIZE))
+            if bc then
+                ChunkMesher.UpdateBlockCell(bc, c[1], c[2], c[3])
+            end
+        end
     end
 end)
 
 local candidates = {} -- reused each frame: unmeshed chunks to build
 
+local function distToPlayer(key: string, pcx: number, pcz: number): number
+    local chunk = ClientWorld[key]
+    return chunk and math.max(math.abs(chunk.cx - pcx), math.abs(chunk.cz - pcz)) or math.huge
+end
+
 local function unloadFarChunks(pcx: number, pcz: number)
     for key, model in pairs(MeshedChunks) do
-        local chunk = ClientWorld[key]
-        local dist = chunk and math.max(math.abs(chunk.cx - pcx), math.abs(chunk.cz - pcz)) or math.huge
-        if dist > UNLOAD_RADIUS then
+        if distToPlayer(key, pcx, pcz) > UNLOAD_RADIUS then
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
+        end
+    end
+    for key, bc in pairs(BlockChunks) do
+        if distToPlayer(key, pcx, pcz) > UNLOAD_RADIUS then
+            ChunkMesher.RecycleBlockChunk(bc)
+            BlockChunks[key] = nil
         end
     end
 end
@@ -144,7 +164,7 @@ RunService.RenderStepped:Connect(function()
     for dz = -NEAR_RADIUS, NEAR_RADIUS do
         for dx = -NEAR_RADIUS, NEAR_RADIUS do
             local key = chunkKey(pcx + dx, pcz + dz)
-            if ClientWorld[key] and not MeshedChunks[key] then
+            if ClientWorld[key] and not MeshedChunks[key] and not BlockChunks[key] then
                 candidates[#candidates + 1] = { key = key, d = dx * dx + dz * dz }
             end
         end
