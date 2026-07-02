@@ -68,9 +68,25 @@ local function getPooledPart(): BasePart
     return part
 end
 
+-- See-through blocks: they don't occlude neighbours (blocks behind them render),
+-- and their own part is drawn semi-transparent so you can see through.
+local TRANSPARENT: { [number]: boolean } = {
+    [BLOCK.OakLeaves] = true,
+}
+local BLOCK_TRANSPARENCY: { [number]: number } = {
+    [BLOCK.OakLeaves] = 0.35,
+}
+
+-- A cell hides its neighbour's facing side only if it is opaque (solid & not
+-- transparent). Air and transparent blocks leave the neighbour face visible.
+local function isOpaque(blockId: number): boolean
+    return blockId ~= 0 and not TRANSPARENT[blockId]
+end
+
 local function applyBlockAppearance(part: BasePart, blockId: number)
     part.Material = BlockMaterials[blockId] or Enum.Material.SmoothPlastic
     part.Color = BlockColors[blockId] or Color3.fromRGB(255, 0, 255)
+    part.Transparency = BLOCK_TRANSPARENCY[blockId] or 0
 end
 
 -- ========== textures (per-face Texture objects) ==========
@@ -214,8 +230,15 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
         if gy < gLo then return true end   -- below the cave floor = solid rock
         return grid[(gx + 1) + (gz + 1) * GW + (gy - gLo) * slab + 1] ~= 0
     end
+    -- A face is drawn when its neighbour is NOT opaque (air OR a transparent block),
+    -- so blocks behind leaves/glass are rendered instead of culled.
+    local function opaque(gx: number, gy: number, gz: number): boolean
+        if gy > maxY then return false end
+        if gy < gLo then return true end
+        return isOpaque(grid[(gx + 1) + (gz + 1) * GW + (gy - gLo) * slab + 1])
+    end
 
-    -- exposed = solid cell with any air neighbor (surface shell AND cave walls)
+    -- exposed = solid cell with any non-opaque neighbor (surface shell AND cave walls)
     local exposed = table.create(layer * span, 0)
     for ly = 0, span - 1 do
         local y = gLo + ly
@@ -225,9 +248,9 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
             for x = 0, CS - 1 do
                 local id = grid[(x + 1) + (z + 1) * GW + sbase + 1]
                 if id ~= 0
-                    and (not solid(x + 1, y, z) or not solid(x - 1, y, z)
-                        or not solid(x, y + 1, z) or not solid(x, y - 1, z)
-                        or not solid(x, y, z + 1) or not solid(x, y, z - 1)) then
+                    and (not opaque(x + 1, y, z) or not opaque(x - 1, y, z)
+                        or not opaque(x, y + 1, z) or not opaque(x, y - 1, z)
+                        or not opaque(x, y, z + 1) or not opaque(x, y, z - 1)) then
                     exposed[x + z * CS + ebase + 1] = id
                 end
             end
@@ -286,20 +309,20 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
                     local ePX, eNX, ePY, eNY, ePZ, eNZ = false, false, false, false, false, false
                     for zz = z, z + d - 1 do
                         for yy = yb, yt do
-                            if not solid(x + w, yy, zz) then ePX = true end
-                            if not solid(x - 1, yy, zz) then eNX = true end
+                            if not opaque(x + w, yy, zz) then ePX = true end
+                            if not opaque(x - 1, yy, zz) then eNX = true end
                         end
                     end
                     for xx = x, x + w - 1 do
                         for yy = yb, yt do
-                            if not solid(xx, yy, z + d) then ePZ = true end
-                            if not solid(xx, yy, z - 1) then eNZ = true end
+                            if not opaque(xx, yy, z + d) then ePZ = true end
+                            if not opaque(xx, yy, z - 1) then eNZ = true end
                         end
                     end
                     for zz = z, z + d - 1 do
                         for xx = x, x + w - 1 do
-                            if not solid(xx, yt + 1, zz) then ePY = true end
-                            if not solid(xx, yb - 1, zz) then eNY = true end
+                            if not opaque(xx, yt + 1, zz) then ePY = true end
+                            if not opaque(xx, yb - 1, zz) then eNY = true end
                         end
                     end
 
@@ -393,56 +416,78 @@ local NID_LEFT = Enum.NormalId.Left
 local NID_BACK = Enum.NormalId.Back
 local NID_FRONT = Enum.NormalId.Front
 
-local function makeCellPart(wx, y, wz, id, ePX, eNX, ePY, eNY, ePZ, eNZ): BasePart
-    local part = getPooledPart()
-    part.Size = V3(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
-    part.CFrame = CFrame.new((wx + 0.5) * BLOCK_SIZE, (y + 0.5) * BLOCK_SIZE, (wz + 0.5) * BLOCK_SIZE)
-    applyBlockAppearance(part, id)
-    local tex = BlockTextures[id]
-    if tex then
-        if ePY then addFace(part, NID_TOP, tex.top) end
-        if eNY then addFace(part, NID_BOTTOM, tex.bottom) end
-        if ePX then addFace(part, NID_RIGHT, tex.side) end
-        if eNX then addFace(part, NID_LEFT, tex.side) end
-        if ePZ then addFace(part, NID_BACK, tex.side) end
-        if eNZ then addFace(part, NID_FRONT, tex.side) end
+local function findFaceTexture(part: BasePart, face: Enum.NormalId): Texture?
+    for _, t in part:GetChildren() do
+        if t:IsA("Texture") and t.Face == face then
+            return t
+        end
     end
-    return part
+    return nil
 end
 
--- Re-evaluate one cell: create / update / remove its part based on the current
--- world. Called for the edited cell and each of its 6 neighbors.
+-- Ensure a face has (or doesn't have) a texture, without recreating the part —
+-- so revealing a neighbor's face never flashes.
+local function setFaceTexture(part: BasePart, face: Enum.NormalId, image: string?)
+    local t = findFaceTexture(part, face)
+    if image then
+        if not t then
+            addFace(part, face, image)
+        elseif t.Texture ~= image then
+            t.Texture = image
+        end
+    elseif t then
+        recycleTexture(t)
+    end
+end
+
+-- Set a cell part's visible faces to match exposure. Bottom is NEVER textured
+-- (it's essentially never seen and doubles the churn when digging).
+local function applyCellFaces(part: BasePart, id: number, ePX, eNX, ePY, ePZ, eNZ)
+    local tex = BlockTextures[id]
+    local side = tex and tex.side or nil
+    setFaceTexture(part, NID_TOP, (ePY and tex) and tex.top or nil)
+    setFaceTexture(part, NID_RIGHT, ePX and side or nil)
+    setFaceTexture(part, NID_LEFT, eNX and side or nil)
+    setFaceTexture(part, NID_BACK, ePZ and side or nil)
+    setFaceTexture(part, NID_FRONT, eNZ and side or nil)
+end
+
+-- Re-evaluate one cell: create / update-in-place / remove its part. Called for
+-- the edited cell and each of its neighbors. Updates faces incrementally so an
+-- existing part never gets rebuilt (no flash on reveal).
 function ChunkMesher.UpdateBlockCell(bc: BlockChunk, wx: number, y: number, wz: number)
     local key = cellKey(wx, y, wz)
-    local existing = bc.cells[key]
+    local part = bc.cells[key]
 
     local id = worldBlockAt(wx, wz, y)
-    local ePX, eNX, ePY, eNY, ePZ, eNZ = false, false, false, false, false, false
+    local ePX, eNX, ePY, ePZ, eNZ = false, false, false, false, false
     local exposed = false
     if id ~= BLOCK_AIR then
-        ePX = worldBlockAt(wx + 1, wz, y) == BLOCK_AIR
-        eNX = worldBlockAt(wx - 1, wz, y) == BLOCK_AIR
-        ePY = worldBlockAt(wx, wz, y + 1) == BLOCK_AIR
-        eNY = worldBlockAt(wx, wz, y - 1) == BLOCK_AIR
-        ePZ = worldBlockAt(wx, wz + 1, y) == BLOCK_AIR
-        eNZ = worldBlockAt(wx, wz - 1, y) == BLOCK_AIR
-        exposed = ePX or eNX or ePY or eNY or ePZ or eNZ
+        ePX = not isOpaque(worldBlockAt(wx + 1, wz, y))
+        eNX = not isOpaque(worldBlockAt(wx - 1, wz, y))
+        ePY = not isOpaque(worldBlockAt(wx, wz, y + 1))
+        ePZ = not isOpaque(worldBlockAt(wx, wz + 1, y))
+        eNZ = not isOpaque(worldBlockAt(wx, wz - 1, y))
+        exposed = ePX or eNX or ePY or ePZ or eNZ -- bottom never counts
     end
 
     if not exposed then
-        if existing then
-            recyclePart(existing)
+        if part then
+            recyclePart(part)
             bc.cells[key] = nil
         end
         return
     end
 
-    if existing then
-        recyclePart(existing)
+    if not part then
+        part = getPooledPart()
+        part.Size = V3(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+        part.CFrame = CFrame.new((wx + 0.5) * BLOCK_SIZE, (y + 0.5) * BLOCK_SIZE, (wz + 0.5) * BLOCK_SIZE)
+        part.Parent = bc.model
+        bc.cells[key] = part
     end
-    local part = makeCellPart(wx, y, wz, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
-    part.Parent = bc.model
-    bc.cells[key] = part
+    applyBlockAppearance(part, id)
+    applyCellFaces(part, id, ePX, eNX, ePY, ePZ, eNZ)
 end
 
 -- Build the whole chunk as per-cell parts (used when a chunk first gets edited).
@@ -492,10 +537,10 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
             end
         end
     end
-    local function solid(gx, gy, gz): boolean
+    local function opaque(gx, gy, gz): boolean
         if gy > maxY then return false end
         if gy < gLo then return true end
-        return grid[(gx + 1) + (gz + 1) * GW + (gy - gLo) * slab + 1] ~= 0
+        return isOpaque(grid[(gx + 1) + (gz + 1) * GW + (gy - gLo) * slab + 1])
     end
 
     for ly = 0, span - 1 do
@@ -505,15 +550,19 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
             for x = 0, CS - 1 do
                 local id = grid[(x + 1) + (z + 1) * GW + sbase + 1]
                 if id ~= 0 then
-                    local ePX = not solid(x + 1, y, z)
-                    local eNX = not solid(x - 1, y, z)
-                    local ePY = not solid(x, y + 1, z)
-                    local eNY = not solid(x, y - 1, z)
-                    local ePZ = not solid(x, y, z + 1)
-                    local eNZ = not solid(x, y, z - 1)
-                    if ePX or eNX or ePY or eNY or ePZ or eNZ then
+                    local ePX = not opaque(x + 1, y, z)
+                    local eNX = not opaque(x - 1, y, z)
+                    local ePY = not opaque(x, y + 1, z)
+                    local ePZ = not opaque(x, y, z + 1)
+                    local eNZ = not opaque(x, y, z - 1)
+                    -- bottom (eNY) is never drawn in block mode
+                    if ePX or eNX or ePY or ePZ or eNZ then
                         local wx, wz = cx * CS + x, cz * CS + z
-                        local part = makeCellPart(wx, y, wz, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
+                        local part = getPooledPart()
+                        part.Size = V3(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE)
+                        part.CFrame = CFrame.new((wx + 0.5) * BLOCK_SIZE, (y + 0.5) * BLOCK_SIZE, (wz + 0.5) * BLOCK_SIZE)
+                        applyBlockAppearance(part, id)
+                        applyCellFaces(part, id, ePX, eNX, ePY, ePZ, eNZ)
                         part.Parent = model
                         cells[cellKey(wx, y, wz)] = part
                     end
