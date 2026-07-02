@@ -22,11 +22,13 @@ local WORLD_NAME = "MainWorld"
 local SYNC_BATCH = 2000 -- edits per network packet when syncing a client
 
 type EditMap = { [string]: number } -- "wx,y,wz" -> blockId
-local store = ProfileStore.New("VoxlWorld_v1", { edits = {} :: EditMap })
+export type Claim = { owner: number, wx: number, wz: number, radius: number }
+local store = ProfileStore.New("VoxlWorld_v1", { edits = {} :: EditMap, claims = {} :: { Claim } })
 
 local profile: any = nil
 local loaded = false
 local pending: EditMap = {} -- edits applied before the profile finished loading
+local readyCallbacks: { (claims: { Claim }) -> () } = {}
 
 local function cellKey(wx: number, y: number, wz: number): string
     return wx .. "," .. y .. "," .. wz
@@ -38,6 +40,24 @@ local function parseKey(key: string): (number?, number?, number?)
         return nil, nil, nil
     end
     return tonumber(sx), tonumber(sy), tonumber(sz)
+end
+
+-- Claims (land locks) persist alongside edits.
+function WorldStore.addClaim(claim: Claim)
+    if profile then
+        local list = profile.Data.claims
+        list[#list + 1] = claim
+    end
+end
+
+-- Called with the persisted claims once the world profile has loaded (fires
+-- immediately if already loaded).
+function WorldStore.onReady(fn: (claims: { Claim }) -> ())
+    if loaded and profile then
+        fn(profile.Data.claims)
+    else
+        readyCallbacks[#readyCallbacks + 1] = fn
+    end
 end
 
 -- Record an applied edit so it persists.
@@ -105,7 +125,13 @@ task.spawn(function()
 
     profile = p
     loaded = true
-    print(`[WorldStore] loaded {n} edits for '{WORLD_NAME}'`)
+    print(`[WorldStore] loaded {n} edits, {#p.Data.claims} claims for '{WORLD_NAME}'`)
+
+    -- Restore claims now that the profile is loaded.
+    for _, fn in readyCallbacks do
+        task.spawn(fn, p.Data.claims)
+    end
+    table.clear(readyCallbacks)
 
     -- Sync anyone already in-game.
     for _, player in Players:GetPlayers() do

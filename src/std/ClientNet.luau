@@ -320,6 +320,12 @@ function SerdesFunctions.ReadEVENT_InventorySync(): ({ { block: number, count: n
 	return Value
 end
 
+function SerdesFunctions.WriteEVENT_PlaceLock(Value: nil): ()
+	-- Allocate BLOCK: 1 bytes
+	local BLOCK_START = Allocate(1)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 6)
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -340,6 +346,9 @@ if not RunService:IsRunning() then
 	},
 	InventorySync = {
 		On = NOOP
+	},
+	PlaceLock = {
+		Fire = NOOP
 	},
 	})
 	return Returns :: BLINK_EVENTS_SYMBOL
@@ -536,6 +545,11 @@ local Returns = table.freeze({
 					Events.Reliable[5] = nil
 				end
 			end
+		end
+	},
+	PlaceLock = {
+		Fire = function(Value: nil): ()
+			SerdesFunctions.WriteEVENT_PlaceLock(Value)
 		end
 	},
 })

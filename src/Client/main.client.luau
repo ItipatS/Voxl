@@ -16,3 +16,5 @@ require(script.Parent:WaitForChild("BlockEdit"))
 -- Inventory window open/close (Bag button / Exit / E key) + block grid render.
 require(script.Parent:WaitForChild("InventoryToggle"))
 require(script.Parent:WaitForChild("InventoryRender"))
+-- L drops a claim lock.
+require(script.Parent:WaitForChild("LockController"))

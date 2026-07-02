@@ -14,6 +14,7 @@ local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
 local WorldDiff = require(ReplicatedStorage.Misc.WorldDiff)
 local WorldStore = require(script.Parent.WorldStore)
 local PlayerStore = require(script.Parent.PlayerStore)
+local LockService = require(script.Parent.LockService)
 
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
 local BLOCK = WorldGen.BLOCK
@@ -53,7 +54,10 @@ blink.EditBlock.On(function(player: Player, edit)
         return -- too far
     end
 
-    -- TODO: lock/claim permission check goes here (unclaimed land is free for now).
+    -- Claim permission: unclaimed land is free; otherwise only the owner edits.
+    if not LockService.canEdit(player, edit.wx, edit.wz) then
+        return
+    end
 
     -- Inventory: breaking mines the block you remove; placing consumes one.
     local surfaceY, biomeId = getColumn(edit.wx, edit.wz)
