@@ -35,6 +35,12 @@ local function n01(n: number): number
     return 0.5 * (n + 1)
 end
 
+-- Perlin noise bunches near 0.5; stretch a 0..1 value toward the extremes so the
+-- climate grid (and elevation) actually reaches deserts, jungles, peaks, etc.
+local function spread(v: number, amount: number): number
+    return math.clamp((v - 0.5) * amount + 0.5, 0, 1)
+end
+
 local function noise2D(seed: number, x: number, z: number): number
     return math.noise(x + seed * 13.37, z + seed * 42.69)
 end
@@ -50,53 +56,78 @@ type BiomeDef = {
     soilDepth: number,
     minHeight: number,
     maxHeight: number,
+    flatness: number,    -- exponent on the base 0..1: >1 flattens lowlands
+    hilliness: number,   -- amplitude (blocks) of medium-frequency bumps
+    ridged: number,      -- extra ridged height (blocks); >0 for mountains
+    treeDensity: number, -- 0..100 chance a candidate grid cell has a tree
+    grass: Color3?,      -- biome grass tint (nil = non-grass top), from BoP palette
 }
 
+-- Biome ids (append-only). Climate-placed by temperature x humidity, with high
+-- elevations overriding to highland/mountain variants. Grass colours adapted from
+-- Biomes O' Plenty.
+local B_PLAINS = 1
+local B_DESERT = 2
+local B_FOREST = 3
+local B_CRAG = 4
+local B_SNOW_HIGH = 5
+local B_SAVANNA = 6
+local B_JUNGLE = 7
+local B_SWAMP = 8
+local B_SEASONAL = 9
+local B_TAIGA = 10
+local B_TUNDRA = 11
+local B_SNOWY_FOREST = 12
+local B_COLD_DESERT = 13
+local B_HIGHLAND = 14
+local B_SNOWY_PEAKS = 15
+
 local Biomes: { [number]: BiomeDef } = {
-    [1] = { -- Plains
-        name = "Plains",
-        top = BLOCK.Grass,
-        under = BLOCK.Dirt,
-        soilDepth = 4,
-        minHeight = 58,
-        maxHeight = 72,
-    },
-
-    [2] = { -- Desert
-        name = "Desert",
-        top = BLOCK.Sand,
-        under = BLOCK.Sand,
-        soilDepth = 5,
-        minHeight = 56,
-        maxHeight = 70,
-    },
-
-    [3] = { -- Forest
-        name = "Forest",
-        top = BLOCK.Grass,
-        under = BLOCK.Dirt,
-        soilDepth = 5,
-        minHeight = 60,
-        maxHeight = 85,
-    },
-
-    [4] = { -- Mountains
-        name = "Mountains",
-        top = BLOCK.Stone,
-        under = BLOCK.Stone,
-        soilDepth = 3,
-        minHeight = 90,
-        maxHeight = 155,   -- before was 200
-    },
-
-    [5] = { -- Snow Highlands
-        name = "SnowHighlands",
-        top = BLOCK.Snow,
-        under = BLOCK.Stone,
-        soilDepth = 3,
-        minHeight = 120,
-        maxHeight = 190,   -- before was 240
-    },
+    [B_PLAINS] = { name = "Plains", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 60, maxHeight = 70, flatness = 2.2, hilliness = 2, ridged = 0,
+        treeDensity = 6, grass = Color3.fromRGB(143, 192, 90) },
+    [B_DESERT] = { name = "Desert", top = BLOCK.Sand, under = BLOCK.Sand, soilDepth = 6,
+        minHeight = 58, maxHeight = 70, flatness = 1.6, hilliness = 5, ridged = 0,
+        treeDensity = 0, grass = nil },
+    [B_FOREST] = { name = "Forest", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 5,
+        minHeight = 62, maxHeight = 84, flatness = 1.2, hilliness = 5, ridged = 0,
+        treeDensity = 55, grass = Color3.fromRGB(121, 192, 90) },
+    [B_CRAG] = { name = "Crag", top = BLOCK.Stone, under = BLOCK.Stone, soilDepth = 3,
+        minHeight = 92, maxHeight = 150, flatness = 1, hilliness = 8, ridged = 46,
+        treeDensity = 0, grass = nil },
+    [B_SNOW_HIGH] = { name = "SnowHighlands", top = BLOCK.Snow, under = BLOCK.Stone, soilDepth = 3,
+        minHeight = 110, maxHeight = 180, flatness = 1, hilliness = 8, ridged = 58,
+        treeDensity = 0, grass = nil },
+    [B_SAVANNA] = { name = "Savanna", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 60, maxHeight = 72, flatness = 2, hilliness = 3, ridged = 0,
+        treeDensity = 10, grass = Color3.fromRGB(191, 183, 85) },
+    [B_JUNGLE] = { name = "Jungle", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 5,
+        minHeight = 62, maxHeight = 86, flatness = 1.2, hilliness = 6, ridged = 0,
+        treeDensity = 78, grass = Color3.fromRGB(89, 201, 60) },
+    [B_SWAMP] = { name = "Swamp", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 58, maxHeight = 64, flatness = 3, hilliness = 2, ridged = 0,
+        treeDensity = 28, grass = Color3.fromRGB(106, 143, 78) },
+    [B_SEASONAL] = { name = "SeasonalForest", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 5,
+        minHeight = 62, maxHeight = 82, flatness = 1.3, hilliness = 5, ridged = 0,
+        treeDensity = 45, grass = Color3.fromRGB(183, 152, 74) },
+    [B_TAIGA] = { name = "Taiga", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 64, maxHeight = 88, flatness = 1.2, hilliness = 6, ridged = 0,
+        treeDensity = 50, grass = Color3.fromRGB(134, 184, 127) },
+    [B_TUNDRA] = { name = "Tundra", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 60, maxHeight = 72, flatness = 2, hilliness = 3, ridged = 0,
+        treeDensity = 4, grass = Color3.fromRGB(168, 168, 110) },
+    [B_SNOWY_FOREST] = { name = "SnowyForest", top = BLOCK.Snow, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 64, maxHeight = 90, flatness = 1.2, hilliness = 6, ridged = 0,
+        treeDensity = 40, grass = nil },
+    [B_COLD_DESERT] = { name = "ColdDesert", top = BLOCK.Sand, under = BLOCK.Sand, soilDepth = 5,
+        minHeight = 58, maxHeight = 70, flatness = 1.6, hilliness = 4, ridged = 0,
+        treeDensity = 0, grass = nil },
+    [B_HIGHLAND] = { name = "Highland", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 3,
+        minHeight = 86, maxHeight = 128, flatness = 1, hilliness = 7, ridged = 20,
+        treeDensity = 8, grass = Color3.fromRGB(143, 181, 106) },
+    [B_SNOWY_PEAKS] = { name = "SnowyPeaks", top = BLOCK.Snow, under = BLOCK.Stone, soilDepth = 3,
+        minHeight = 130, maxHeight = 200, flatness = 1, hilliness = 9, ridged = 66,
+        treeDensity = 0, grass = nil },
 }
 
 
@@ -117,43 +148,47 @@ local function sampleHeightNoise(wx: number, wz: number): number
         continents * 0.55 +
         ridges     * 0.35 +
         detail     * 0.1
-    
-    return n01(n) -- 0..1
+
+    return spread(n01(n), 1.5) -- 0..1, stretched so highlands/peaks actually occur
 end
 
 local function sampleTempNoise(wx: number, wz: number): number
     -- smaller biomes → higher frequency
     local scale = 0.006 -- was 0.0015
-    return n01(noise2D(BASE_SEED + 300, wx * scale, wz * scale))
+    return spread(n01(noise2D(BASE_SEED + 300, wx * scale, wz * scale)), 1.9)
 end
 
 local function sampleHumidityNoise(wx: number, wz: number): number
     local scale = 0.007 -- was 0.0018
-    return n01(noise2D(BASE_SEED + 400, wx * scale, wz * scale))
+    return spread(n01(noise2D(BASE_SEED + 400, wx * scale, wz * scale)), 1.9)
 end
 
 local function pickBiome(temp: number, humid: number, baseHeight01: number): number
-    -- high alt → mountains / snow
-    if baseHeight01 > 0.55 then
-        if temp < 0.45 then
-            return 5 -- SnowHighlands
-        else
-            return 4 -- Mountains
-        end
+    -- High elevation overrides the climate grid.
+    if baseHeight01 > 0.74 then
+        return if temp < 0.35 then B_SNOWY_PEAKS else B_CRAG
+    elseif baseHeight01 > 0.60 then
+        return if temp < 0.35 then B_SNOW_HIGH else B_HIGHLAND
     end
 
-    -- hot & dry → desert
-    if temp > 0.7 and humid < 0.4 then
-        return 2 -- Desert
+    -- Lowland climate grid: temperature (rows) x humidity (cols), BoP-style.
+    if temp < 0.30 then -- cold
+        if humid < 0.35 then return B_COLD_DESERT
+        elseif humid < 0.62 then return B_TUNDRA
+        else return B_SNOWY_FOREST end
+    elseif temp < 0.55 then -- cool
+        if humid < 0.32 then return B_PLAINS
+        elseif humid < 0.62 then return B_TAIGA
+        else return B_SEASONAL end
+    elseif temp < 0.78 then -- warm
+        if humid < 0.30 then return B_SAVANNA
+        elseif humid < 0.60 then return B_FOREST
+        else return B_SWAMP end
+    else -- hot
+        if humid < 0.35 then return B_DESERT
+        elseif humid < 0.62 then return B_SAVANNA
+        else return B_JUNGLE end
     end
-
-    -- wet → forest
-    if humid > 0.6 then
-        return 3 -- Forest
-    end
-
-    -- default → plains
-    return 1
 end
 
 -- simple cave noise
@@ -245,9 +280,11 @@ local function treeAtCell(gx: number, gz: number): TreeInfo | false
         local wx0 = gx * TREE_CELL + (h % TREE_CELL)
         local wz0 = gz * TREE_CELL + (math.floor(h / TREE_CELL) % TREE_CELL)
         local surf0, biome0 = WorldGen.getColumn(wx0, wz0)
-        -- Forests are dense, plains sparse; nothing on sand/stone/snow or in water.
+        -- Per-biome density; nothing below water. (Grass/dirt-top biomes only —
+        -- desert/stone/snow biomes have treeDensity 0.)
         if surf0 >= WATER_LEVEL and surf0 >= 55 then
-            if biome0 == 3 or (biome0 == 1 and (math.floor(h / 100) % 100) < 28) then
+            local density = Biomes[biome0].treeDensity
+            if density > 0 and (math.floor(h / 100) % 100) < density then
                 result = { wx0 = wx0, wz0 = wz0, surf0 = surf0, seed = h }
             end
         end
@@ -297,65 +334,33 @@ local function computeColumnHeight(
     base01: number
 ): number
     local biome = Biomes[biomeId]
+    local range = biome.maxHeight - biome.minHeight
 
-    -- Base height within biome range
-    local h = biome.minHeight + base01 * (biome.maxHeight - biome.minHeight)
+    -- Base height, flattened toward the low end by the biome's flatness exponent
+    -- (plains/savanna stay low & smooth, forests/jungles roll more).
+    local shaped = base01 ^ biome.flatness
+    local h = biome.minHeight + shaped * range
 
-    -- ==== Biome-specific shaping ====
+    -- Medium-frequency bumps scaled by hilliness.
+    h = h + noise2D(BASE_SEED + 901, wx * 0.018, wz * 0.018) * biome.hilliness
 
-    -- Plains → very smooth, gentle rolling
-    if biomeId == 1 then -- Plains
-        local smooth = n01(noise2D(BASE_SEED + 901, wx * 0.003, wz * 0.003))
-        smooth = smooth ^ 2            -- more flat, bumps mostly in mid
-        h = biome.minHeight + smooth * (biome.maxHeight - biome.minHeight)
+    -- Ridged peaks for mountains / highlands.
+    if biome.ridged > 0 then
+        h = h + math.abs(noise2D(BASE_SEED + 905, wx * 0.0025, wz * 0.0025)) ^ 3 * biome.ridged
     end
 
-    -- Desert → low variation + dunes
-    if biomeId == 2 then -- Desert
-        -- Big flat-ish desert floor
-        local desertBase = n01(noise2D(BASE_SEED + 902, wx * 0.002, wz * 0.002))
-        h = biome.minHeight + desertBase * (biome.maxHeight - biome.minHeight)
-
-        -- Dunes: directional medium-frequency waves
-        local dune = noise2D(BASE_SEED + 903, wx * 0.015, wz * 0.005)
-        h = h + dune * 6 -- +/- 6 blocks of dunes
-    end
-
-    -- Forest → a bit rougher than plains, but still climbable
-    if biomeId == 3 then -- Forest
-        local rough = n01(noise2D(BASE_SEED + 904, wx * 0.004, wz * 0.004))
-        rough = rough ^ 1.5
-        h = biome.minHeight + rough * (biome.maxHeight - biome.minHeight)
-    end
-
-    -- Mountains (stone) → use ridged/mountain noise extra
-    if biomeId == 4 then -- Mountains
-        local ridged = math.abs(noise2D(BASE_SEED + 905, wx * 0.002, wz * 0.002)) ^ 3
-        h = h + ridged * 40  -- was 80, now 40 for 256 world height
-    end
-
-    if biomeId == 5 then -- SnowHighlands
-        local ridged = math.abs(noise2D(BASE_SEED + 906, wx * 0.002, wz * 0.002)) ^ 4
-        h = h + ridged * 60  -- was 120, now 60
-    end
-
-    -- Lakes / basins: flatten low-lying areas near water level
-    -- (This keeps broad lakes instead of jagged, noisy holes.)
+    -- Lakes / basins: flatten low-lying areas near water level (broad lakes, not
+    -- jagged holes).
     if h < WATER_LEVEL - 4 then
-        -- Blend upwards a bit so bottoms aren't crazy noisy
-        local t = (WATER_LEVEL - 4 - h) / 16 -- how far below lake floor
-        t = math.clamp(t, 0, 1)
+        local t = math.clamp((WATER_LEVEL - 4 - h) / 16, 0, 1)
         h = h * (1 - t) + (WATER_LEVEL - 8) * t
     end
 
-    -- Clamp to world
     if h < 0 then
         h = 0
-    end
-    if h > WORLD_HEIGHT - 1 then
+    elseif h > WORLD_HEIGHT - 1 then
         h = WORLD_HEIGHT - 1
     end
-
     return math.floor(h)
 end
 
@@ -519,6 +524,22 @@ function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, b
     end
     return mat
 end
+
+-- Biome grass tint (nil for non-grass biomes), for the mesher to colour grass.
+function WorldGen.biomeGrassColor(biomeId: number): Color3?
+    local b = Biomes[biomeId]
+    return if b then b.grass else nil
+end
+
+-- Biomes that grow trees (treeDensity > 0), so the mesher only extends its Y
+-- range for canopies where trees can actually appear.
+local TREE_BIOMES: { [number]: boolean } = {}
+for id, b in Biomes do
+    if b.treeDensity > 0 then
+        TREE_BIOMES[id] = true
+    end
+end
+WorldGen.TREE_BIOMES = TREE_BIOMES
 
 WorldGen.CAVE_START_Y = CAVE_START_Y
 WorldGen.TREE_MAX_H = TREE_MAX_H

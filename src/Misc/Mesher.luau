@@ -159,7 +159,8 @@ end
 -- ========== 3D greedy on the generated surface shell ==========
 type Emit = (
     blockId: number, size: Vector3, center: Vector3,
-    ePX: boolean, eNX: boolean, ePY: boolean, eNY: boolean, ePZ: boolean, eNZ: boolean
+    ePX: boolean, eNX: boolean, ePY: boolean, eNY: boolean, ePZ: boolean, eNZ: boolean,
+    biomeId: number
 ) -> ()
 
 local WorldDiff = require(ReplicatedStorage.Misc.WorldDiff)
@@ -170,7 +171,9 @@ local blockAt = WorldGen.blockAt
 local diffBlockAt = WorldDiff.blockAt
 local CAVE_FLOOR = WorldGen.CAVE_START_Y - 1
 local TREE_MAX_H = WorldGen.TREE_MAX_H
-local GRASS_BIOMES = { [1] = true, [3] = true } -- Plains, Forest — where trees grow
+local TREE_BIOMES = WorldGen.TREE_BIOMES -- biomes whose canopies need extra Y range
+local biomeGrassColor = WorldGen.biomeGrassColor
+local BLOCK_GRASS = BLOCK.Grass
 
 local function runGreedy3D(chunk: ClientChunk, emit: Emit)
     local cx, cz = chunk.cx, chunk.cz
@@ -194,7 +197,7 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
             local i = (x + 1) + (z + 1) * GW + 1
             Hgrid[i] = h
             Bgrid[i] = b
-            if GRASS_BIOMES[b] then hasGrass = true end
+            if TREE_BIOMES[b] then hasGrass = true end
             if x >= 0 and x < CS and z >= 0 and z < CS and h > maxY then
                 maxY = h
             end
@@ -341,7 +344,8 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
                         V3(baseX + (x + w * 0.5) * BLOCK_SIZE,
                             (gLo + ly + hgt * 0.5) * BLOCK_SIZE,
                             baseZ + (z + d * 0.5) * BLOCK_SIZE),
-                        ePX, eNX, ePY, eNY, ePZ, eNZ)
+                        ePX, eNX, ePY, eNY, ePZ, eNZ,
+                        Bgrid[(x + 1) + (z + 1) * GW + 1])
                 end
             end
         end
@@ -355,7 +359,7 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
     local model = Instance.new("Model")
     model.Name = "chunk_" .. chunkKey(chunk.cx, chunk.cz)
 
-    runGreedy3D(chunk, function(id, size, center, ePX, eNX, ePY, eNY, ePZ, eNZ)
+    runGreedy3D(chunk, function(id, size, center, ePX, eNX, ePY, eNY, ePZ, eNZ, biomeId)
         local part = getPooledPart()
         part.Size = size
         part.CFrame = CFrame.new(center)
@@ -364,7 +368,9 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
 
         local tex = BlockTextures[id]
         if tex then
-            if ePY then addFace(part, Enum.NormalId.Top, tex.top) end
+            -- Tint the grass TOP by the biome (sides keep the dirt fringe untinted).
+            local topTint = if id == BLOCK_GRASS then biomeGrassColor(biomeId) else nil
+            if ePY then addFace(part, Enum.NormalId.Top, tex.top, topTint) end
             if eNY then addFace(part, Enum.NormalId.Bottom, tex.bottom) end
             if ePX then addFace(part, Enum.NormalId.Right, tex.side) end
             if eNX then addFace(part, Enum.NormalId.Left, tex.side) end
@@ -519,7 +525,7 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
             local i = (x + 1) + (z + 1) * GW + 1
             Hgrid[i] = h
             Bgrid[i] = b
-            if GRASS_BIOMES[b] then hasGrass = true end
+            if TREE_BIOMES[b] then hasGrass = true end
             if x >= 0 and x < CS and z >= 0 and z < CS and h > maxY then
                 maxY = h
             end
