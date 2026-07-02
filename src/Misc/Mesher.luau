@@ -1,137 +1,44 @@
--- ReplicatedStorage/ChunkMesher.luau
+-- ReplicatedStorage/Misc/Mesher.luau
 --!optimize 2
 --!native
---!strict
+
+-- Greedy voxel mesher, fully client-side / generation-driven.
+--   * Terrain is deterministic (WorldGen), so the mesher GENERATES what it needs
+--     from a chunk's coordinates alone — no block data is transferred; the server
+--     only sends which chunks to load.
+--   * Within the meshed band the terrain is a heightmap (caves sit below the
+--     surface and are internal), so we compute per-column surface heights and walk
+--     only the thin visible shell, then 3D-greedy-merge exposed blocks into solid
+--     boxes: one box per block, no overlaps, and each box is BOTH visual (material +
+--     colour) and collision. Boxes are pooled.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
 local CHUNK_SIZE = WorldGen.CHUNK_SIZE
-local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 local BLOCK = WorldGen.BLOCK
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
 
 export type ClientChunk = {
     cx: number,
     cz: number,
-    blocks: { [number]: number },
-    heightfields: { [number]: number },
-    minY: number,
-    maxY: number,
 }
 
 export type ClientWorld = {
     [string]: ClientChunk
 }
 
-export type VisibleSet  = { [string]: boolean }
--- ========== simple part pool ==========
-
-local PartPool: { BasePart } = {}
-
-local CAVE_VIS_MIN_Y = 35
-
- 
-local debugSeen = {}
-
-local function debugKey(part: BasePart): string
-    local p = part.CFrame.Position
-    local s = part.Size
-    return string.format("%.2f,%.2f,%.2f|%.2f,%.2f,%.2f",
-        p.X, p.Y, p.Z, s.X, s.Y, s.Z)
-end
-
-local function getPooledPart(): Part
-    local part = table.remove(PartPool)
-    if part then
-        -- make sure it's detached from any old parent
-        part.Parent = nil
-    else
-        part = Instance.new("Part")
-        part.Anchored = true
-        part.TopSurface = Enum.SurfaceType.Smooth
-        part.BottomSurface = Enum.SurfaceType.Smooth
-    end
-
-    -- common defaults; we’ll override size/cframe/color/material per use
-    part.CanCollide = true
-    part.CanQuery = true
-    part.CanTouch = false
-    part.Transparency = 0
-
-    return part
-end
-
-
--- ========== index helper ==========
 local function chunkKey(cx: number, cz: number): string
     return tostring(cx) .. ":" .. tostring(cz)
 end
 
-local function idx3(lx: number, y: number, lz: number): number
-    -- 0-based indexing, same as WorldGen
-    return lx + (y * CHUNK_SIZE) + (lz * CHUNK_SIZE * WORLD_HEIGHT)
-end
-
--- ========== block access from sparse map ==========
-
-local function getBlockGlobal(
-    world: ClientWorld,
-    visible: VisibleSet,
-    cx: number,
-    cz: number,
-    lx: number,
-    y: number,
-    lz: number
-): number
-    if y < 0 or y >= WORLD_HEIGHT then
-        return BLOCK.Air
-    end
-
-    local ncx, ncz = cx, cz
-    local nlx, nlz = lx, lz
-
-    -- handle X cross-chunk
-    if nlx < 0 then
-        ncx -= 1
-        nlx += CHUNK_SIZE
-    elseif nlx >= CHUNK_SIZE then
-        ncx += 1
-        nlx -= CHUNK_SIZE
-    end
-
-    -- handle Z cross-chunk
-    if nlz < 0 then
-        ncz -= 1
-        nlz += CHUNK_SIZE
-    elseif nlz >= CHUNK_SIZE then
-        ncz += 1
-        nlz -= CHUNK_SIZE
-    end
-
-    local key = chunkKey(ncx, ncz)
-    local neighbor = world[key]
-    if not neighbor then
-        return BLOCK.Air
-    end
-
-    local blocks = neighbor.blocks
-    local linear = idx3(nlx, y, nlz)
-    return blocks[linear] or BLOCK.Air
-end
-
-local function isSolid(id: number): boolean
-    return id ~= nil and id ~= BLOCK.Air and id ~= 0
-end
-
--- ========== apply appearance for a merged Part ==========
-
+-- ========== appearance ==========
 local BlockColors: { [number]: Color3 } = {
     [BLOCK.Grass] = Color3.fromRGB(80, 160, 80),
     [BLOCK.Dirt]  = Color3.fromRGB(120, 72, 48),
     [BLOCK.Sand]  = Color3.fromRGB(235, 225, 180),
     [BLOCK.Stone] = Color3.fromRGB(120, 120, 120),
-    [BLOCK.Snow] = Color3.fromRGB(255, 255, 255)
+    [BLOCK.Snow]  = Color3.fromRGB(255, 255, 255),
 }
 
 local BlockMaterials: { [number]: Enum.Material } = {
@@ -139,538 +46,201 @@ local BlockMaterials: { [number]: Enum.Material } = {
     [BLOCK.Dirt]  = Enum.Material.Ground,
     [BLOCK.Sand]  = Enum.Material.Sand,
     [BLOCK.Stone] = Enum.Material.Slate,
-    [BLOCK.Snow] = Enum.Material.Snow,
+    [BLOCK.Snow]  = Enum.Material.Snow,
 }
 
-local function applyBlockAppearance(part: Part, blockId: number)
-    part.Anchored = true
-    part.CanCollide = true  -- using same mesh for collision
+-- ========== part pool ==========
+local PartPool: { BasePart } = {}
+
+local function getPooledPart(): BasePart
+    local part = table.remove(PartPool)
+    if not part then
+        part = Instance.new("Part")
+        part.Anchored = true
+        part.TopSurface = Enum.SurfaceType.Smooth
+        part.BottomSurface = Enum.SurfaceType.Smooth
+        part.CanTouch = false
+    end
+    part.Parent = nil
+    part.Transparency = 0
+    part.CanCollide = true
     part.CanQuery = true
-    part.CanTouch = false
-
-    local mat = BlockMaterials[blockId]
-    if mat then
-        part.Material = mat
-    else
-        part.Material = Enum.Material.SmoothPlastic
-    end
-
-    local col = BlockColors[blockId]
-    if col then
-        part.Color = col
-    else
-        part.Color = Color3.fromRGB(255, 0, 255) -- debug pink
-    end
+    return part
 end
 
--- ========== generic 2D greedy on a mask ==========
+local function applyBlockAppearance(part: BasePart, blockId: number)
+    part.Material = BlockMaterials[blockId] or Enum.Material.SmoothPlastic
+    part.Color = BlockColors[blockId] or Color3.fromRGB(255, 0, 255)
+end
 
--- mask: 1D array of size (w*h), mask[i] = blockId or 0
--- onRect: callback(x, y, w, h, blockId)
-local function greedy2D(mask: { number }, w: number, h: number, onRect: (number, number, number, number, number) -> ())
-    local used = table.create(w * h, false)
+-- ========== 3D greedy on the generated surface shell ==========
+type Emit = (blockId: number, size: Vector3, center: Vector3) -> ()
 
-    for j = 0, h - 1 do
-        for i = 0, w - 1 do
-            local idx = i + j * w + 1
-            if not used[idx] then
-                local id = mask[idx]
-                if id ~= 0 then
-                    -- expand width
-                    local width = 1
-                    while i + width < w do
-                        local idx2 = (i + width) + j * w + 1
-                        if used[idx2] or mask[idx2] ~= id then
-                            break
-                        end
-                        width += 1
+local V3 = Vector3.new
+local getColumn = WorldGen.getColumn
+local blockAt = WorldGen.blockAt
+local CAVE_FLOOR = WorldGen.CAVE_START_Y - 1
+
+local function runGreedy3D(chunk: ClientChunk, emit: Emit)
+    local cx, cz = chunk.cx, chunk.cz
+    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
+    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
+    local CS = CHUNK_SIZE
+    local layer = CS * CS
+
+    -- Per-column surface height + biome for x,z in [-1, CS] (chunk + 1-block border
+    -- into neighbors). Deterministic, so boundary faces are correct with no neighbor
+    -- data. maxY comes from this chunk's own columns.
+    local GW = CS + 2
+    local slab = GW * GW
+    local Hgrid = table.create(slab, 0)
+    local Bgrid = table.create(slab, 0)
+    local maxY = 0
+    for z = -1, CS do
+        for x = -1, CS do
+            local h, b = getColumn(cx * CS + x, cz * CS + z)
+            local i = (x + 1) + (z + 1) * GW + 1
+            Hgrid[i] = h
+            Bgrid[i] = b
+            if x >= 0 and x < CS and z >= 0 and z < CS and h > maxY then
+                maxY = h
+            end
+        end
+    end
+
+    -- Full 3D range: caves reach down to CAVE_START_Y, so mesh [caveFloor, maxY].
+    local gLo = CAVE_FLOOR
+    if gLo < 0 then gLo = 0 end
+    local span = maxY - gLo + 1
+    if span <= 0 then return end
+
+    -- Cave-aware solidity grid over x,z in [-1, CS], y in [gLo, maxY] (blockId; 0 = air).
+    local grid = table.create(slab * span, 0)
+    for ly = 0, span - 1 do
+        local y = gLo + ly
+        local base = ly * slab
+        for z = -1, CS do
+            for x = -1, CS do
+                local i = (x + 1) + (z + 1) * GW + 1
+                grid[i + base] = blockAt(cx * CS + x, y, cz * CS + z, Hgrid[i], Bgrid[i])
+            end
+        end
+    end
+    local function solid(gx: number, gy: number, gz: number): boolean
+        if gy > maxY then return false end -- above surface = air
+        if gy < gLo then return true end   -- below the cave floor = solid rock
+        return grid[(gx + 1) + (gz + 1) * GW + (gy - gLo) * slab + 1] ~= 0
+    end
+
+    -- exposed = solid cell with any air neighbor (surface shell AND cave walls)
+    local exposed = table.create(layer * span, 0)
+    for ly = 0, span - 1 do
+        local y = gLo + ly
+        local sbase = ly * slab
+        local ebase = ly * layer
+        for z = 0, CS - 1 do
+            for x = 0, CS - 1 do
+                local id = grid[(x + 1) + (z + 1) * GW + sbase + 1]
+                if id ~= 0
+                    and (not solid(x + 1, y, z) or not solid(x - 1, y, z)
+                        or not solid(x, y + 1, z) or not solid(x, y - 1, z)
+                        or not solid(x, y, z + 1) or not solid(x, y, z - 1)) then
+                    exposed[x + z * CS + ebase + 1] = id
+                end
+            end
+        end
+    end
+
+    -- greedy grow +X, then +Z (whole row), then +Y (whole slab)
+    local used = table.create(layer * span, false)
+    for ly = 0, span - 1 do
+        for z = 0, CS - 1 do
+            for x = 0, CS - 1 do
+                local i0 = x + z * CS + ly * layer + 1
+                local mat = exposed[i0]
+                if mat ~= 0 and not used[i0] then
+                    local w = 1
+                    while x + w < CS do
+                        local ii = (x + w) + z * CS + ly * layer + 1
+                        if used[ii] or exposed[ii] ~= mat then break end
+                        w += 1
                     end
 
-                    -- expand height
-                    local height = 1
-                    local done = false
-                    while j + height < h do
-                        for dx = 0, width - 1 do
-                            local idx2 = (i + dx) + (j + height) * w + 1
-                            if used[idx2] or mask[idx2] ~= id then
-                                done = true
-                                break
+                    local d = 1
+                    local grow = true
+                    while grow and z + d < CS do
+                        for xx = 0, w - 1 do
+                            local ii = (x + xx) + (z + d) * CS + ly * layer + 1
+                            if used[ii] or exposed[ii] ~= mat then grow = false break end
+                        end
+                        if grow then d += 1 end
+                    end
+
+                    local hgt = 1
+                    grow = true
+                    while grow and ly + hgt < span do
+                        for zz = 0, d - 1 do
+                            for xx = 0, w - 1 do
+                                local ii = (x + xx) + (z + zz) * CS + (ly + hgt) * layer + 1
+                                if used[ii] or exposed[ii] ~= mat then grow = false break end
+                            end
+                            if not grow then break end
+                        end
+                        if grow then hgt += 1 end
+                    end
+
+                    for yy = 0, hgt - 1 do
+                        for zz = 0, d - 1 do
+                            for xx = 0, w - 1 do
+                                used[(x + xx) + (z + zz) * CS + (ly + yy) * layer + 1] = true
                             end
                         end
-                        if done then break end
-                        height += 1
                     end
 
-                    -- mark used
-                    for v = 0, height - 1 do
-                        for u = 0, width - 1 do
-                            local idx2 = (i + u) + (j + v) * w + 1
-                            used[idx2] = true
-                        end
-                    end
-
-                    onRect(i, j, width, height, id)
+                    emit(mat,
+                        V3(w * BLOCK_SIZE, hgt * BLOCK_SIZE, d * BLOCK_SIZE),
+                        V3(baseX + (x + w * 0.5) * BLOCK_SIZE,
+                            (gLo + ly + hgt * 0.5) * BLOCK_SIZE,
+                            baseZ + (z + d * 0.5) * BLOCK_SIZE))
                 end
             end
         end
     end
 end
-
--- ========== Meshing faces in +Y, +X, +Z directions ==========
-
--- +Y faces: horizontal, facing up. 2D grid in (lx, lz) per y-layer
-local function meshTopFaces(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance)
-    local cx = chunk.cx
-    local cz = chunk.cz
-
-    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
-    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
-
-    local minY = chunk.minY
-    local maxY = chunk.maxY
-
-    for y = minY, maxY do
-        local mask = table.create(CHUNK_SIZE * CHUNK_SIZE, 0)
-
-        for lz = 0, CHUNK_SIZE - 1 do
-            for lx = 0, CHUNK_SIZE - 1 do
-                local id      = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
-                if isSolid(id) then
-                    local above = getBlockGlobal(world, visible, cx, cz, lx, y + 1, lz)
-                    if not isSolid(above) then
-                        local idx2 = lx + lz * CHUNK_SIZE + 1
-                        mask[idx2] = id
-                    end
-                end
-            end
-        end
-
-        greedy2D(mask, CHUNK_SIZE, CHUNK_SIZE, function(ix, iz, w, h, blockId)
-            local sizeX = w * BLOCK_SIZE
-            local sizeZ = h * BLOCK_SIZE
-            local thickness = BLOCK_SIZE
-
-            local centerX = baseX + (ix * BLOCK_SIZE) + sizeX * 0.5
-            local centerY = (y + 1) * BLOCK_SIZE + thickness * 0.5
-            local centerZ = baseZ + (iz * BLOCK_SIZE) + sizeZ * 0.5
-
-            local part = getPooledPart()
-            part.Size = Vector3.new(sizeX, thickness, sizeZ)
-            part.CFrame = CFrame.new(centerX, centerY, centerZ)
-
-            local key = debugKey(part)
-            if debugSeen[key] then
-                warn("Duplicate face at", key)
-            else
-                debugSeen[key] = true
-            end
-
-            part.Parent = parent
-            applyBlockAppearance(part, blockId)
-        end)
-    end
-end
-
--- +X faces: vertical walls facing +X. 2D grid in (lz, y) per lx-slice
-local function meshPosXFaces(world: ClientWorld, visible:VisibleSet , chunk: ClientChunk, parent: Instance, renderCaves: boolean)
-    local cx = chunk.cx
-    local cz = chunk.cz
-
-    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
-    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
-
-    local minY = chunk.minY
-    local maxY = chunk.maxY
-
-      if not renderCaves then
-        if maxY < CAVE_VIS_MIN_Y then
-            return -- nothing interesting in this chunk
-        end
-        if minY < CAVE_VIS_MIN_Y then
-            minY = CAVE_VIS_MIN_Y
-        end
-    end
-
-    local heightSpan = maxY - minY + 1
-    if heightSpan <= 0 then return end
-
-    for lx = 0, CHUNK_SIZE - 1 do
-        local mask = table.create(CHUNK_SIZE * heightSpan, 0)
-
-        for lz = 0, CHUNK_SIZE - 1 do
-            for y = minY, maxY do
-                local id = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
-                if isSolid(id) then
-                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx + 1, y, lz)
-                    if not isSolid(neighbor) then
-                        local localY = y - minY
-                        local idx2 = lz + localY * CHUNK_SIZE + 1
-                        mask[idx2] = id
-                    end
-                end
-            end
-        end
-
-        greedy2D(mask, CHUNK_SIZE, heightSpan, function(iz, iy, w, h, blockId)
-            -- w in lz, h in y
-            local sizeZ = w * BLOCK_SIZE
-            local sizeY = h * BLOCK_SIZE
-            local thickness = BLOCK_SIZE
-
-            local faceX = (lx + 1) * BLOCK_SIZE -- face between this block and air on +X
-            local centerX = (baseX + faceX) + thickness * 0.5
-
-            local worldY = minY + iy
-            local centerY = (worldY + h * 0.5) * BLOCK_SIZE
-            local centerZ = baseZ + (iz + w * 0.5) * BLOCK_SIZE
-
-            local part = getPooledPart()
-            part.Size = Vector3.new(thickness, sizeY, sizeZ)
-            part.CFrame = CFrame.new(centerX, centerY, centerZ)
-
-            local key = debugKey(part)
-            if debugSeen[key] then
-                warn("Duplicate face at", key)
-            else
-                debugSeen[key] = true
-            end
-
-            part.Parent = parent
-            applyBlockAppearance(part, blockId)
-        end)
-    end
-end
-
--- +Z faces: vertical walls facing +Z. 2D grid in (lx, y) per lz-slice
-local function meshPosZFaces(world: ClientWorld, visible:VisibleSet, chunk: ClientChunk, parent: Instance, renderCaves: boolean)
-    local cx = chunk.cx
-    local cz = chunk.cz
-
-    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
-    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
-
-    local minY = chunk.minY
-    local maxY = chunk.maxY
-
-    if not renderCaves then
-        if maxY < CAVE_VIS_MIN_Y then
-            return -- nothing interesting in this chunk
-        end
-        if minY < CAVE_VIS_MIN_Y then
-            minY = CAVE_VIS_MIN_Y
-        end
-    end
-
-    local heightSpan = maxY - minY + 1
-    if heightSpan <= 0 then return end
-
-    for lz = 0, CHUNK_SIZE - 1 do
-        local mask = table.create(CHUNK_SIZE * heightSpan, 0)
-
-        for lx = 0, CHUNK_SIZE - 1 do
-            for y = minY, maxY do
-                local id =  getBlockGlobal(world, visible, cx, cz, lx, y, lz)
-                if isSolid(id) then
-                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx, y, lz + 1)
-                    if not isSolid(neighbor) then
-                        local localY = y - minY
-                        local idx2 = lx + localY * CHUNK_SIZE + 1
-                        mask[idx2] = id
-                    end
-                end
-            end
-        end
-
-        greedy2D(mask, CHUNK_SIZE, heightSpan, function(ix, iy, w, h, blockId)
-            -- w in lx, h in y
-            local sizeX = w * BLOCK_SIZE
-            local sizeY = h * BLOCK_SIZE
-            local thickness = BLOCK_SIZE
-
-            local faceZ = (lz + 1) * BLOCK_SIZE
-            local centerZ = (baseZ + faceZ) + thickness * 0.5
-            
-            local worldY = minY + iy
-
-            local centerY = (worldY + h * 0.5) * BLOCK_SIZE
-            local centerX = baseX + (ix + w  * 0.5) * BLOCK_SIZE
-
-            local part = getPooledPart()
-            part.Size = Vector3.new(sizeX, sizeY, thickness)
-            part.CFrame = CFrame.new(centerX, centerY, centerZ)
-
-            local key = debugKey(part)
-            if debugSeen[key] then
-                warn("Duplicate face at", key)
-            else
-                debugSeen[key] = true
-            end
-
-            part.Parent = parent
-            applyBlockAppearance(part, blockId)
-        end)
-    end
-end
-
--- -X faces: vertical walls facing -X. 2D grid in (lz, y) per lx-slice
-local function meshNegXFaces(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance,  renderCaves: boolean)
-    local cx = chunk.cx
-    local cz = chunk.cz
-
-    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
-    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
-
-    local minY = chunk.minY
-    local maxY = chunk.maxY
-
-    if not renderCaves then
-        if maxY < CAVE_VIS_MIN_Y then
-            return -- nothing interesting in this chunk
-        end
-        if minY < CAVE_VIS_MIN_Y then
-            minY = CAVE_VIS_MIN_Y
-        end
-    end
-
-    local heightSpan = maxY - minY + 1
-     if heightSpan <= 0 then return end
-
-    for lx = 0, CHUNK_SIZE - 1 do
-        local mask = table.create(CHUNK_SIZE * heightSpan, 0)
-
-        for lz = 0, CHUNK_SIZE - 1 do
-            for y = minY, maxY do
-                local id = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
-                if isSolid(id) then
-                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx - 1, y, lz)
-                    if not isSolid(neighbor) then
-                        local localY = y - minY
-                        local idx2 = lz + localY * CHUNK_SIZE + 1
-                        mask[idx2] = id
-                    end
-                end
-            end
-        end
-
-        greedy2D(mask, CHUNK_SIZE, heightSpan, function(iz, iy, w, h, blockId)
-            local sizeZ = w * BLOCK_SIZE
-            local sizeY = h * BLOCK_SIZE
-            local thickness = BLOCK_SIZE
-
-            local faceX = lx * BLOCK_SIZE        -- face at the -X side of this column
-            local centerX = (baseX + faceX) - thickness * 0.5
-
-            local worldY = minY + iy
-            local centerY = (worldY + h * 0.5) * BLOCK_SIZE
-            local centerZ = baseZ + (iz + w * 0.5) * BLOCK_SIZE
-
-            local part = getPooledPart()
-            part.Size = Vector3.new(thickness, sizeY, sizeZ)
-            part.CFrame = CFrame.new(centerX, centerY, centerZ)
-
-            local key = debugKey(part)
-            if debugSeen[key] then
-                warn("Duplicate face at", key)
-            else
-                debugSeen[key] = true
-            end
-
-            part.Parent = parent
-            applyBlockAppearance(part, blockId)
-        end)
-    end
-end
-
--- -Z faces: vertical walls facing -Z. 2D grid in (lx, y) per lz-slice
-local function meshNegZFaces(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance, renderCaves: boolean)
-    local cx = chunk.cx
-    local cz = chunk.cz
-
-    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
-    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
-
-    local minY = chunk.minY
-    local maxY = chunk.maxY
-
-    if not renderCaves then
-        if maxY < CAVE_VIS_MIN_Y then
-            return -- nothing interesting in this chunk
-        end
-        if minY < CAVE_VIS_MIN_Y then
-            minY = CAVE_VIS_MIN_Y
-        end
-    end
-
-    local heightSpan = maxY - minY + 1
-    if heightSpan <= 0 then return end
-
-    for lz = 0, CHUNK_SIZE - 1 do
-        local mask = table.create(CHUNK_SIZE * heightSpan, 0)
-
-        for lx = 0, CHUNK_SIZE - 1 do
-            for y = minY,maxY do
-                local id = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
-                if isSolid(id) then
-                    local neighbor = getBlockGlobal(world, visible, cx, cz, lx, y, lz - 1)
-                    if not isSolid(neighbor) then
-                        local localY = y - minY
-                        local idx2 = lx + localY * CHUNK_SIZE + 1
-                        mask[idx2] = id
-                    end
-                end
-            end
-        end
-
-        greedy2D(mask, CHUNK_SIZE, heightSpan, function(ix, iy, w, h, blockId)
-            local sizeX = w * BLOCK_SIZE
-            local sizeY = h * BLOCK_SIZE
-            local thickness = BLOCK_SIZE
-
-            local faceZ = lz * BLOCK_SIZE        -- face at the -Z side of this column
-            local centerZ = (baseZ + faceZ) - thickness * 0.5
-
-            local worldY = minY + iy
-            local centerY = (worldY + h * 0.5) * BLOCK_SIZE
-            local centerX = baseX + (ix + w * 0.5) * BLOCK_SIZE
-
-            local part = getPooledPart()
-            part.Size = Vector3.new(sizeX, sizeY, thickness)
-            part.CFrame = CFrame.new(centerX, centerY, centerZ)
-
-            local key = debugKey(part)
-            if debugSeen[key] then
-                warn("Duplicate face at", key)
-            else
-                debugSeen[key] = true
-            end
-
-            part.Parent = parent
-            applyBlockAppearance(part, blockId)
-        end)
-    end
-end
-
--- -Y faces: horizontal ceilings facing down. 2D grid in (lx, lz) per y-layer
-local function meshCeilingFaces(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance,  renderCaves: boolean)
-    local cx = chunk.cx
-    local cz = chunk.cz
-
-    local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
-    local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
-
-    -- If you already have chunk.minY / chunk.maxY, use those instead of 0..WORLD_HEIGHT-1
-    local minY = chunk.minY
-    local maxY = chunk.maxY
-
-    if not renderCaves then
-        if maxY < CAVE_VIS_MIN_Y then
-            return
-        end
-        if minY < CAVE_VIS_MIN_Y then
-            minY = CAVE_VIS_MIN_Y
-        end
-    end
-
-    if minY > maxY then return end
-
-    for y = minY, maxY do
-        local mask = table.create(CHUNK_SIZE * CHUNK_SIZE, 0)
-
-        for lz = 0, CHUNK_SIZE - 1 do
-            for lx = 0, CHUNK_SIZE - 1 do
-                local id = getBlockGlobal(world, visible, cx, cz, lx, y, lz)
-                if isSolid(id) then
-                    local below = getBlockGlobal(world, visible, cx, cz, lx, y - 1, lz)
-                    if not isSolid(below) then
-                        local idx2 = lx + lz * CHUNK_SIZE + 1
-                        mask[idx2] = id
-                    end
-                end
-            end
-        end
-
-        greedy2D(mask, CHUNK_SIZE, CHUNK_SIZE, function(ix, iz, w, h, blockId)
-            local sizeX = w * BLOCK_SIZE
-            local sizeZ = h * BLOCK_SIZE
-            local thickness = BLOCK_SIZE
-
-            local centerX = baseX + (ix * BLOCK_SIZE) + sizeX * 0.5
-            -- Face is at the *bottom* of this layer
-            local centerY = (y * BLOCK_SIZE) - thickness * 0.5
-            local centerZ = baseZ + (iz * BLOCK_SIZE) + sizeZ * 0.5
-
-            local part = getPooledPart()
-            part.Size = Vector3.new(sizeX, thickness, sizeZ)
-            -- face down: flip by 180° around X (or use CFrame.fromMatrix with -Y normal)
-            part.CFrame = CFrame.new(centerX, centerY, centerZ) * CFrame.Angles(math.pi, 0, 0)
-
-            local key = debugKey(part)
-            if debugSeen[key] then
-                warn("Duplicate face at", key)
-            else
-                debugSeen[key] = true
-            end
-
-            part.Parent = parent
-            applyBlockAppearance(part, blockId)
-        end)
-    end
-end
-
-
 
 -- ========== PUBLIC API ==========
-
 local ChunkMesher = {}
 
-local MeshCount:number = 0
-
-function ChunkMesher.BuildChunk(world: ClientWorld, visible: VisibleSet, chunk: ClientChunk, parent: Instance): Model
-    local key = chunkKey(chunk.cx, chunk.cz)
-
-    debugSeen = {} 
-
+function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
     local model = Instance.new("Model")
-    model.Name = "chunk_" .. key
+    model.Name = "chunk_" .. chunkKey(chunk.cx, chunk.cz)
+
+    runGreedy3D(chunk, function(id, size, center)
+        local part = getPooledPart()
+        part.Size = size
+        part.CFrame = CFrame.new(center)
+        applyBlockAppearance(part, id)
+        part.Parent = model
+    end)
+
     model.Parent = parent
-
-    local renderCaves = true
-
-
-    -- mesh all visible faces:
-    meshTopFaces(world, visible, chunk, model)
-
-    meshPosXFaces(world, visible, chunk, model, renderCaves)
-    meshNegXFaces(world, visible, chunk, model, renderCaves)
-    meshPosZFaces(world, visible, chunk, model, renderCaves)
-    meshNegZFaces(world, visible, chunk, model, renderCaves)
-    meshCeilingFaces(world, visible, chunk, model, renderCaves)
-
-    for k, v in pairs(model:GetChildren()) do
-        MeshCount += 1
-    end
-
-    warn("estimate MeshCount: ", MeshCount)
-
     return model
 end
 
-function ChunkMesher.RecyclePart(part: BasePart)
+local function recyclePart(part: BasePart)
     part.Parent = nil
     table.insert(PartPool, part)
 end
 
 function ChunkMesher.RecycleChunkModel(model: Model)
-    -- detach & pool BaseParts, destroy non-part stuff, then destroy model
     for _, child in ipairs(model:GetChildren()) do
         if child:IsA("BasePart") then
-            ChunkMesher.RecyclePart(child)
+            recyclePart(child)
         else
             child:Destroy()
         end
     end
     model:Destroy()
 end
-
 
 return ChunkMesher

@@ -2,8 +2,7 @@
 --!optimize 2
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local jabby = require(ReplicatedStorage.Packages.jabby)
-local jecs = require(ReplicatedStorage.ecs)
+local jecs = require(ReplicatedStorage.Packages.jecs)
 local pair = jecs.pair
 local Name = jecs.Name
 
@@ -24,7 +23,6 @@ type Events = {
 }
 
 local world = require(script.Parent.world)
-local Disabled = world:entity()
 local System = world:component() :: Id<{ callback: (any) -> (), name: string}>
 local DependsOn = world:entity()
 local Event = world:component() :: Id<RBXScriptSignal>
@@ -35,18 +33,6 @@ local Heartbeat = world:entity()
 local PreAnimation = world:entity()
 local PreSimulation = world:entity()
 
-local sys: System
-local dt: number
-
-local jabby_scheduler = jabby.scheduler.create("Scheduler")
-
-local a, b, c, d
-local function run()
-	local id = sys.id
-	jabby_scheduler:run(id, sys.callback, a, b, c, d)
-	return nil
-end
-
 world:add(Heartbeat, Phase)
 world:set(Heartbeat, Event, RunService.Heartbeat)
 
@@ -55,22 +41,6 @@ world:set(PreSimulation, Event, RunService.PreSimulation)
 
 world:add(PreAnimation, Phase)
 world:set(PreAnimation, Event, RunService.PreAnimation)
-
-jabby.register({
-	applet = jabby.applets.world,
-	name = "MyWorld",
-	configuration = {
-	world = world,
-	},
-})
-
-jabby.register({
-	applet = jabby.applets.scheduler,
-	name = "Scheduler",
-	configuration = {
-		scheduler = jabby_scheduler,
-	},
-})
 
 if RunService:IsClient() then 
 	world:add(PreRender, Phase)
@@ -87,13 +57,7 @@ local function begin(events: { [RBXScriptSignal]: Systems })
 		connections[event] = event:Connect(function(...)
 			debug.profilebegin(event_name)
 			for _, s in systems do
-				sys = s
-				a, b, c, d = ...
-
-				for _ in run do
-					break
-				end
-
+				s.callback(...)
 			end
 			debug.profileend()
 		end)
@@ -105,7 +69,7 @@ local function scheduler_collect_systems_under_phase_recursive(systems, phase: E
 	local phase_name = world:get(phase, Name)
 	for _, s in world:query(System):with(pair(DependsOn, phase)) do
 		table.insert(systems, {
-			id = jabby_scheduler:register_system({
+			id = ({
 				name = s.name,
 				phase = phase_name,
 			} :: any),

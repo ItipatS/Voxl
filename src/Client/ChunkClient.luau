@@ -15,27 +15,24 @@ local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 
 local chunkcount:number = 0
 
-local MeshedChunks = {}
+local MeshedChunks = {}   -- key -> Model of block Parts (visual + collision)
 
-local MeshQueue = {}
-local Queued: { [string]: boolean } = {}
+local NEAR_RADIUS = 8            -- render radius (chunks)
+local UNLOAD_RADIUS = NEAR_RADIUS + 4
+-- Per-frame meshing is bounded by TIME, not a fixed count. This is self-adapting:
+-- cheap (flat/plains) chunks cost ~0.05 ms so we blast through ~100 in a frame,
+-- while an expensive mountain chunk (~5 ms) simply consumes the whole budget on
+-- its own — so plains never pay for the mountain worst case, and a mountain never
+-- spikes beyond one chunk. Chunks are meshed NEAREST-FIRST so the ground under and
+-- ahead of the player is always built first (no falling through when moving).
+local MESH_TIME_BUDGET = 0.005  -- ~5 ms/frame
+local MAX_CHUNK_PER_FRAME = 128 -- effectively "as many cheap chunks as fit"
 
-local CurrentVisibleSet: { [string]: boolean } = {}
-
-local NEAR_RADIUS = 10
-local FAR_RADIUS  = 12 
-local UNLOAD_RADIUS  = NEAR_RADIUS + 4
-
-local BUILD_INTERVAL = 1 / 60
-local MAX_CHUNK_PER_FRAME = 5
-
+-- A chunk is just a coordinate now: the client generates its terrain from the
+-- deterministic WorldGen, so no block data is stored or transferred.
 export type ClientChunk = {
     cx: number,
     cz: number,
-    blocks: { [number]: number },
-    heightfields: { [number]: number },
-    minY: number,
-    maxY: number,
 }
 
 export type ClientWorld = {
@@ -56,190 +53,131 @@ local function chunkKey(cx: number, cz: number): string
     return tostring(cx) .. ":" .. tostring(cz)
 end
 
-local function buildVisibleSet(): { [string]: boolean }
-    return CurrentVisibleSet
-end
-
 local Chunks = Instance.new("Folder")
 Chunks.Name = "Chunks"
 Chunks.Parent = workspace
 
-local function idx3(x: number, y: number, z: number): number
-    return x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * WORLD_HEIGHT)
-end
-
-local function enqueueChunkForMeshing(cx: number, cz: number)
-    local key = chunkKey(cx, cz)
-    -- only if we have data, no mesh yet, and not already queued
-    if ClientWorld[key] and not MeshedChunks[key] and not Queued[key] then
-        table.insert(MeshQueue, key)
-        Queued[key] = true
-    end
-end
-
-blink.ChunkFullStream.On(function(payloads)
+-- Server tells us which chunks to load (coordinates only); we generate + mesh them.
+blink.LoadChunks.On(function(payloads)
     for _, entry in payloads do
-        local cx = entry.cx
-        local cz = entry.cz
-        local key = chunkKey(cx, cz)
-
-        local heightfields = entry.heightfields
-
-         local minY = WORLD_HEIGHT - 1
-        local maxY = 0
-        for _, h in ipairs(heightfields) do
-            if h < minY then minY = h end
-            if h > maxY then maxY = h end
-        end
-
-        local chunk: ChunkMesher.ClientChunk = {
-            cx = cx,
-            cz = cz,
-            blocks = entry.blocks,
-            heightfields = entry.heightfields,
-            minY = minY,
-            maxY = maxY,
-        }
-
-        ClientWorld[key] = chunk
-
-        local offsets = {
-            {  1,  0 },
-            { -1,  0 },
-            {  0,  1 },
-            {  0, -1 },
-        }
-
-        for _, off in ipairs(offsets) do
-            local ncx = chunk.cx + off[1]
-            local ncz = chunk.cz + off[2]
-            local nkey = chunkKey(ncx, ncz)
-            if MeshedChunks[nkey] then
-                enqueueChunkForMeshing(ncx, ncz)
-            end
-        end
+        ClientWorld[chunkKey(entry.cx, entry.cz)] = { cx = entry.cx, cz = entry.cz }
     end
     chunkcount += #payloads
-    print("Chunks received: ", chunkcount)
 end)
 
 blink.UnloadChunks.On(function(payloads)
     for _, key in ipairs(payloads) do
-        -- destroy model if present
         local model = MeshedChunks[key]
         if model then
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
         end
-
-        -- drop voxel data (server will resend if needed later)
         ClientWorld[key] = nil
-        Queued[key] = nil
-
-        -- clean from mesh queue
-        for i = #MeshQueue, 1, -1 do
-            if MeshQueue[i] == key then
-                table.remove(MeshQueue, i)
-            end
-        end
     end
 end)
 
--- helper: get blockId or Air if nil
-function ClientWorld.getBlock(cx: number, cz: number, lx: number, y: number, lz: number): number
-    local key = chunkKey(cx, cz)
-    local chunk = ClientWorld[key]
-    if not chunk then
-        return 0
-    end
+local candidates = {} -- reused each frame: unmeshed chunks to build
 
-    local linear = idx3(lx, y, lz)
-    return chunk.blocks[linear] or WorldGen.BLOCK.Air
-end
-
-local function updateRenderedChunks()
-    local character = localPlayer.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root then
-        return
-    end
-
-    local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
-
-
-    -- 1) Build desired render set around player
-    local desired: { [string]: boolean } = {}
-
-    for dz = -NEAR_RADIUS, NEAR_RADIUS do
-        for dx = -NEAR_RADIUS, NEAR_RADIUS do
-            local cx = pcx + dx
-            local cz = pcz + dz
-            local key = chunkKey(cx, cz)
-            desired[key] = true
-
-            -- If we have data but no mesh yet, queue it
-            if ClientWorld[key] and not MeshedChunks[key] then
-                enqueueChunkForMeshing(cx, cz)
-            end
-        end
-    end
-
-    CurrentVisibleSet = desired
-
-    -- 2) Destroy models that are no longer in render radius
+local function unloadFarChunks(pcx: number, pcz: number)
     for key, model in pairs(MeshedChunks) do
         local chunk = ClientWorld[key]
-        if chunk then
-            local dist = math.max(
-                math.abs(chunk.cx - pcx),
-                math.abs(chunk.cz - pcz)
-            ) -- Chebyshev distance in chunk space
-
-            if dist > UNLOAD_RADIUS then
-                if model then
-                    ChunkMesher.RecycleChunkModel(model)
-                end
-                MeshedChunks[key] = nil
-                Queued[key] = nil
-
-                for i = #MeshQueue, 1, -1 do
-                    if MeshQueue[i] == key then
-                        table.remove(MeshQueue, i)
-                    end
-                end
-            end
-        else
-            -- no data anymore, just clean up
-            if model then
-                ChunkMesher.RecycleChunkModel(model)
-            end
+        local dist = chunk and math.max(math.abs(chunk.cx - pcx), math.abs(chunk.cz - pcz)) or math.huge
+        if dist > UNLOAD_RADIUS then
+            ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
-            Queued[key] = nil
         end
     end
 end
 
 RunService.RenderStepped:Connect(function()
+    local character = localPlayer.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not root then
+        return
+    end
+    local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
 
-    updateRenderedChunks()
+    unloadFarChunks(pcx, pcz)
 
-     local visibleSet = buildVisibleSet()
-
-     for i = 1, MAX_CHUNK_PER_FRAME do
-        -- mesh a few per frame
-        local key = table.remove(MeshQueue, 1)
-        if not key then break end
-
-        local chunk = ClientWorld[key]
-        
-        if chunk then
-            local model = ChunkMesher.BuildChunk(ClientWorld, visibleSet, chunk, Chunks)
-            MeshedChunks[key] = model
+    -- Collect chunks the server has told us to load but that aren't meshed yet,
+    -- tagged by squared distance to the player. Faces at chunk boundaries are
+    -- generated deterministically, so no neighbor data is needed (no seams).
+    table.clear(candidates)
+    for dz = -NEAR_RADIUS, NEAR_RADIUS do
+        for dx = -NEAR_RADIUS, NEAR_RADIUS do
+            local key = chunkKey(pcx + dx, pcz + dz)
+            if ClientWorld[key] and not MeshedChunks[key] then
+                candidates[#candidates + 1] = { key = key, d = dx * dx + dz * dz }
+            end
         end
-        Queued[key] = nil
+    end
+    if #candidates == 0 then
+        return
     end
 
+    -- Nearest-first: the chunk under (and closest ahead of) the player builds
+    -- before distant scenery, so collision is always ready where it matters.
+    table.sort(candidates, function(a, b)
+        return a.d < b.d
+    end)
+
+    -- Mesh within a time budget so a run of expensive (tall) chunks can't spike
+    -- the frame; the closest one always builds (at least 1 per frame).
+    local deadline = os.clock() + MESH_TIME_BUDGET
+    for n = 1, math.min(#candidates, MAX_CHUNK_PER_FRAME) do
+        local c = candidates[n]
+        MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks)
+        if os.clock() >= deadline then
+            break
+        end
+    end
 end)
+
+-- ===== Spawn on the terrain (freeze until the local chunk is meshed) =====
+-- The character is network-owned by this client and collides against the
+-- client-only mesh, so spawning is handled entirely here. WorldGen is
+-- deterministic, so we know the exact ground height with zero data transfer.
+local SPAWN_CLEARANCE = 5 -- studs above the surface block's top face
+
+local function surfaceCFrameAt(x: number, z: number): CFrame
+    local wx = math.floor(x / WorldGen.BLOCK_SIZE)
+    local wz = math.floor(z / WorldGen.BLOCK_SIZE)
+    local surfaceY = WorldGen.getSurfaceHeight(wx, wz)
+    local topY = (surfaceY + 1) * WorldGen.BLOCK_SIZE
+    return CFrame.new(x, topY + SPAWN_CLEARANCE, z)
+end
+
+local function setupSpawn(char: Model)
+    local root = char:WaitForChild("HumanoidRootPart") :: BasePart
+
+    -- Place on the ground immediately (deterministic) and freeze so we never
+    -- fall through terrain that hasn't meshed yet.
+    root.Anchored = true
+    root.CFrame = surfaceCFrameAt(root.Position.X, root.Position.Z)
+
+    task.spawn(function()
+        local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
+        local key = chunkKey(pcx, pcz)
+
+        -- wait for the chunk under the spawn point to mesh (parts are collision)
+        local t0 = os.clock()
+        while not MeshedChunks[key] and os.clock() - t0 < 15 do
+            task.wait(0.1)
+        end
+
+        -- Re-seat on the exact surface (in case the spawn XZ moved) and release.
+        if root.Parent then
+            root.CFrame = surfaceCFrameAt(root.Position.X, root.Position.Z)
+            task.wait()
+            root.Anchored = false
+        end
+    end)
+end
+
+localPlayer.CharacterAdded:Connect(setupSpawn)
+if localPlayer.Character then
+    setupSpawn(localPlayer.Character)
+end
 
 
 return ClientWorld

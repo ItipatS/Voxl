@@ -21,10 +21,10 @@ local WATER_LEVEL = 60
 
 local BLOCK = WorldGen.BLOCK
 
-local function idx3(x: number, y: number, z: number): number
-    -- (x,z) ∈ [0,15], y ∈ [0, WORLD_HEIGHT-1]
-    return x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * WORLD_HEIGHT)
-    -- note: 0-based index here, Blink key is u32, Lua key = idx+1 or idx, your choice
+local function idx3(x: number, y: number, z: number, height: number): number
+    -- (x,z) ∈ [0,15], y ∈ [0, height-1]. Z-stride is the chunk's own height so the
+    -- backing buffer is only as tall as the terrain (dense, contiguous 0..CHUNK_SIZE^2*height-1).
+    return x + (y * CHUNK_SIZE) + (z * CHUNK_SIZE * height)
 end
 
 local function n01(n: number): number
@@ -158,11 +158,17 @@ local function sampleCaveNoise(wx: number, y: number, wz: number): number
     return noise3D(BASE_SEED + 500, wx * scale, y * scale, wz * scale)
 end
 
+-- Cave carving parameters (module-level so client-side generation matches).
+local CAVE_START_Y = 20
+local CAVE_END_OFFSET = 6   -- caves stop this many blocks below the surface
+local CAVE_THRESHOLD = 0.45
+
 export type ChunkFull = {
     cx: number,
     cz: number,
-    blocks: { [number]: number }, -- key = u32 index, value = blockId
-    heightfields: { [number]: number },
+    minY: number,           -- lowest surface height in the chunk
+    maxY: number,           -- highest surface height in the chunk (buffer is maxY+1 tall)
+    blocks: buffer,         -- dense, 1 byte per block, indexed by idx3(lx,y,lz, maxY+1)
 }
 
 local function computeColumnHeight(
@@ -239,6 +245,8 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
     local biomeField  = table.create(CHUNK_SIZE * CHUNK_SIZE, 0)
 
     -- 1) height + biome per (x,z)
+    local minY = WORLD_HEIGHT - 1
+    local maxY = 0
     for lz = 0, CHUNK_SIZE - 1 do
         for lx = 0, CHUNK_SIZE - 1 do
             local wx = cx * CHUNK_SIZE + lx
@@ -255,11 +263,15 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
 
             local i = lx + lz * CHUNK_SIZE + 1
             heightFields[i] = height
+
+            if height < minY then minY = height end
+            if height > maxY then maxY = height end
         end
     end
 
-    -- 2) full 3D, but sparse: only store non-air
-    local blocks: { [number]: number } = {}
+    -- 2) dense block buffer, only as tall as the terrain in this chunk
+    local chunkHeight = maxY + 1
+    local blocks = buffer.create(CHUNK_SIZE * CHUNK_SIZE * chunkHeight)
 
     local CAVE_START_Y = 20
     local CAVE_END_OFFSET = 6 -- keep caves away from immediate surface
@@ -308,8 +320,8 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
                 end
 
                 if blockId ~= BLOCK.Air then
-                    local linear = idx3(lx, y, lz) -- 0-based key
-                    blocks[linear] = blockId
+                    local linear = idx3(lx, y, lz, chunkHeight) -- 0-based buffer offset
+                    buffer.writeu8(blocks, linear, blockId)
                 end
 
             end
@@ -318,12 +330,66 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
     return {
         cx = cx,
         cz = cz,
+        minY = minY,
+        maxY = maxY,
         blocks = blocks,
-        heightfields = heightFields,
     }
-    
+
 end
 
+-- Deterministic surface height (in block units) for a world column.
+-- Shared by server & client so both agree on where the ground is without any data transfer.
+function WorldGen.getSurfaceHeight(wx: number, wz: number): number
+    local base01 = sampleHeightNoise(wx, wz)
+    local temp   = sampleTempNoise(wx, wz)
+    local humid  = sampleHumidityNoise(wx, wz)
+    local biomeId = pickBiome(temp, humid, base01)
+    return computeColumnHeight(wx, wz, biomeId, base01)
+end
+
+-- Surface height AND biome for a column, computed together (the biome is needed
+-- for materials and comes for free while computing the height). This is the basis
+-- for client-side generation: the server only has to send chunk coordinates.
+function WorldGen.getColumn(wx: number, wz: number): (number, number)
+    local base01 = sampleHeightNoise(wx, wz)
+    local temp   = sampleTempNoise(wx, wz)
+    local humid  = sampleHumidityNoise(wx, wz)
+    local biomeId = pickBiome(temp, humid, base01)
+    return computeColumnHeight(wx, wz, biomeId, base01), biomeId
+end
+
+-- Material of a solid cell, given its column's surface height + biome. Caves are
+-- intentionally ignored: they sit >= CAVE_END_OFFSET below the surface, are fully
+-- internal, and never appear in the meshed surface shell.
+function WorldGen.materialAt(y: number, surfaceY: number, biomeId: number): number
+    if y > surfaceY then
+        return BLOCK.Air
+    end
+    local biome = Biomes[biomeId]
+    if y == surfaceY then
+        if surfaceY < 55 then
+            return BLOCK.Sand
+        end
+        return biome.top
+    elseif (surfaceY - y) <= biome.soilDepth then
+        return biome.under
+    end
+    return BLOCK.Stone
+end
+
+-- Full cave-aware block at a cell (carves caves out of stone). Used by the client
+-- to render the true 3D terrain (surface + caves) with no data transfer.
+function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, biomeId: number): number
+    local mat = WorldGen.materialAt(y, surfaceY, biomeId)
+    if mat == BLOCK.Stone and y >= CAVE_START_Y and y <= surfaceY - CAVE_END_OFFSET then
+        if sampleCaveNoise(wx, y, wz) > CAVE_THRESHOLD then
+            return BLOCK.Air
+        end
+    end
+    return mat
+end
+
+WorldGen.CAVE_START_Y = CAVE_START_Y
 WorldGen.CHUNK_SIZE = CHUNK_SIZE
 WorldGen.WORLD_HEIGHT = WORLD_HEIGHT
 WorldGen.BLOCK_SIZE = BLOCK_SIZE

@@ -1,22 +1,16 @@
 option ClientOutput = "src/std/ClientNet.luau"
 option ServerOutput = "src/Server/ServerNet.luau"
 
-map block = { [u32]: u8 }
-
-map heightfield = { [u32]: u8 }
-
-struct ChunkFull {
+struct ChunkCoord {
     cx: i16,
     cz: i16,
-    blocks: block,
-    heightfields: heightfield,
 }
 
-event ChunkFullStream {
+event LoadChunks {
     From: Server,
     Type: Reliable,
     Call: SingleSync,
-    Data: ChunkFull[]
+    Data: ChunkCoord[]
 }
 
 event UnloadChunks {
