@@ -7,8 +7,11 @@ Technical/agent notes live in `/CLAUDE.md`; terrain/biome spec in `WORLDGEN.md`.
 
 1. **Immersive infinite voxel world** — deterministic, client-rendered, cheap to
    stream. Minecraft-grade terrain, Growtopia-grade social/building.
-2. **Named persistent worlds** — you type a name, you get a world.
-3. **Own your space** — claim/lock land to build; unclaimed land is protected.
+2. **Named persistent worlds** — you type a name, you get a world; anyone can
+   join any world by name.
+3. **Freedom by default, protection by choice** — unclaimed land is fully open
+   (anyone digs/places). A **lock** protects an area (and its contents) for its
+   owner. Freedom is the point; the lock is opt-in property.
 4. **MMO-capable** — a deterministic grid makes server-side collision and
    pathfinding nearly free, so many players + NPCs per world is realistic.
 
@@ -46,45 +49,38 @@ worlds.
 
 ---
 
-## 2. Claims / Locks (build permission + monetization)
+## 2. Locks (property + protection)
 
-Growtopia's World Lock / Area Lock, generalized to 3D cubes. A **lock** is an
-item you place; it claims a cube and grants build/break rights inside it.
+**Unclaimed land is 100% free** — anyone can dig terrain and place blocks
+anywhere there is no lock. That freedom is the core feel (classic Growtopia
+openness). A **lock** is the *only* protection mechanic, and it's opt-in.
 
-| Lock tier | Cube edge (blocks) | Volume | Acquire with |
-|---|---|---|---|
-| Small claim | 10 | 10³ = 1e3 | in-game currency |
-| Large claim | 100 | 100³ = 1e6 | currency (expensive) or Robux |
-| Region claim | 1000 | 1000³ = 1e9 | Robux (premium) |
-| **World lock** | whole world | — | Robux (premium, world owner) |
+A lock is an item a player places. It claims a **cylinder**: a circle of a given
+**radius** in XZ, **unbounded in Y** (floor to sky). Inside a lock, only the
+owner (and players the owner trusts) may dig, place, or interact with contents.
 
-Rules (recommended):
+- **Cylinder, not cube.** A radius covers a natural build footprint at any height
+  — a 50-block-radius small lock is plenty for a starter house — and never has to
+  reason about vertical limits. Simple to check: `dist2(x,z, lock.x,lock.z) <=
+  r²`.
+- **Radius = tier.** Bigger radius costs more (currency for small, Robux for
+  large). Exact radii TBD; small ≈ 50.
+- **The lock is property + gameplay in one.** It gates building *and* access to
+  what's inside — houses, chests, doors. One mechanic delivers ownership,
+  security, and the monetization hook. This is the whole point.
 
-- **Building requires a claim you own or are trusted in.** Unclaimed land is
-  **protected** (view/mine-only or fully read-only — see open question). This is
-  griefing-proof by default, unlike Growtopia's open chaos, and it's a natural
-  sink for the economy.
-- Claims **can't overlap** another player's claim. A lock records owner + a
-  trust list (friends allowed to build).
-- **World lock** = the world owner gets build rights everywhere in that world
-  and admin controls (kick, world settings, spawn). This is the premium anchor.
+Rules:
 
-### My take on whether this works
+- Outside every lock: free-for-all build/break by anyone.
+- Inside a lock: owner + trust list only (build, break, open containers).
+- Locks **can't overlap** another player's lock (first-come). A lock records
+  owner + trust list + radius.
+- Locks gate *editing/interaction*, never *visibility* — everyone still sees all
+  terrain and structures (client-rendered). A lock is a data record checked on
+  edit/interact; it has nothing to do with the mesher.
 
-Yes — it's a proven loop (Growtopia monetizes locks heavily) and it maps cleanly
-onto a voxel grid. Two things to get right:
-
-1. **Land monopoly.** 1000³ = a *billion* blocks. In an infinite world that's
-   fine spatially, but price it so it's a real Robux commitment, and consider a
-   **per-player claim cap** or upkeep so whales can't fence off spawn.
-2. **Rendering ≠ permission.** Locks gate *editing*, not *visibility*. Everyone
-   still sees all terrain (it's deterministic and client-rendered). Keep those
-   two concepts separate in code — a lock is a data record checked on
-   place/break, nothing to do with the mesher.
-
-**Open:** is unclaimed land fully read-only, or mine-only (you can dig but not
-place)? Claim shape — always a cube anchored at the lock, or a selectable box?
-Upkeep/decay for abandoned claims? Refunds?
+**Open:** upkeep/decay for abandoned locks? refunds/moving a lock? nesting or
+resizing? a visible lock-area boundary effect?
 
 ---
 
