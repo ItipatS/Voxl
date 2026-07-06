@@ -50,6 +50,7 @@ The design lineage, and the *one load-bearing idea* stolen from each:
 | `.claude/19-ui-conventions.md` | **UI framework + house style** (UIController/UISound/UITween/Notifier): sound, transitions, modals, notices — read before adding any UI |
 | `.claude/20-items-hotbar-tools.md` | Item `kind` (Tool/Consumable/Material), hotbar equip → server-spawned held Tool + particle LOD, activation → behavior |
 | `.claude/21-biomes-and-worldgen.md` | **Biome canon — 5 resource types × 5-tier ladders = 25 biomes, what a TIER means, bounded-star worldgen (reuse `WorldGen`), resource nodes as special meshes** |
+| `.claude/22-crafting-and-stations.md` | **Crafting canon — 3×3 pattern table + time-based stations (furnace/sawmill/crusher/…) + factories; raw→refined→product flow; the tier recipe ladder (what unlocks when)** |
 
 ## Decision status convention
 
