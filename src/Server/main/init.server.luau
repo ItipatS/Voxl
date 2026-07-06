@@ -21,11 +21,11 @@ local start = require(ReplicatedStorage.std.start)
 local placemode = require(ReplicatedStorage.std:WaitForChild("placemode"))
 
 -- LOBBY (The Cluster): stars, black hole, collectables, hosting.
-local LOBBY_SYSTEMS = { "lobby", "constellation", "collectables", "asteroids", "PlayerState", "dustfield", "starentry", "players", "PrivateStarStore", "PlayerStore", "PlantService", "EquipService" }
+local LOBBY_SYSTEMS = { "lobby", "constellation", "collectables", "asteroids", "PlayerState", "dustfield", "starentry", "players", "PrivateStarStore", "PlayerStore", "crafting", "PlantService", "EquipService" }
 -- STAR place (= ResourceStar PlaceId): the voxel gathering world for ONE star. `starworld`
 -- configures the bounded world from TeleportData + positions spawn + loads characters (so it
 -- replaces the old boot-time `spawn` system).
-local RESOURCE_SYSTEMS = { "starworld", "ChunkServer", "players", "BlockEditServer", "PlayerStore" }
+local RESOURCE_SYSTEMS = { "starworld", "ChunkServer", "players", "BlockEditServer", "PlayerStore", "crafting" }
 
 local SYSTEMS = if placemode.Mode == "ResourceStar" then RESOURCE_SYSTEMS else LOBBY_SYSTEMS
 

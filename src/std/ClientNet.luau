@@ -650,10 +650,20 @@ function SerdesFunctions.WriteEVENT_BoostState(Value: boolean): ()
 	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value and 1 or 0)
 end
 
-function SerdesFunctions.WriteEVENT_EquipItem(Value: number): ()
+function SerdesFunctions.WriteEVENT_Craft(Value: string): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
 	buffer.writeu8(SendBuffer, BLOCK_START + 0, 21)
+	local Length = #Value
+	buffer.writeu16(SendBuffer, BLOCK_START + 1, Length)
+	Allocate(Length)
+	buffer.writestring(SendBuffer, SendOffset, Value, Length)
+end
+
+function SerdesFunctions.WriteEVENT_EquipItem(Value: number): ()
+	-- Allocate BLOCK: 3 bytes
+	local BLOCK_START = Allocate(3)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 22)
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Value)
 end
 
@@ -730,6 +740,9 @@ if not RunService:IsRunning() then
 		On = NOOP
 	},
 	BoostState = {
+		Fire = NOOP
+	},
+	Craft = {
 		Fire = NOOP
 	},
 	EquipItem = {
@@ -1194,6 +1207,11 @@ local Returns = table.freeze({
 	BoostState = {
 		Fire = function(Value: boolean): ()
 			SerdesFunctions.WriteEVENT_BoostState(Value)
+		end
+	},
+	Craft = {
+		Fire = function(Value: string): ()
+			SerdesFunctions.WriteEVENT_Craft(Value)
 		end
 	},
 	EquipItem = {

@@ -66,11 +66,87 @@ local DEFS: { ItemDef } = {
 
 local byKey: { [string]: ItemDef } = {}
 local byId: { [number]: ItemDef } = {}
-for _, d in DEFS do
+local function register(d: ItemDef)
 	assert(not byKey[d.key], `itemdb: duplicate key '{d.key}'`)
 	assert(not byId[d.id], `itemdb: duplicate id {d.id}`)
 	byKey[d.key] = d
 	byId[d.id] = d
+end
+for _, d in DEFS do
+	register(d)
+end
+
+-- ---- GENERATED crafting items (materials + tools + product placeholders) -----
+-- Placeholder icons for now: the resource/node art comes later and must NOT block crafting
+-- development. Ids are allocated in fixed ranges from a deterministic source order.
+local materials = require(script.Parent.materials)
+local recipes = require(script.Parent.recipes)
+local GRADE: { Grade } = { "common", "uncommon", "rare", "epic", "legendary" }
+local function gradeFor(t: number): Grade
+	return GRADE[math.clamp(t, 1, 5)]
+end
+local function addGen(d: ItemDef)
+	DEFS[#DEFS + 1] = d
+	register(d)
+end
+
+-- raws / refined / fuel / stains → Material items (id 1000+)
+for i, m in materials.DEFS do
+	addGen({
+		id = 1000 + i,
+		key = m.key,
+		name = m.name,
+		kind = "Material",
+		tier = m.tier,
+		grade = gradeFor(m.tier),
+		weight = 1,
+		stack = 99,
+		icon = M.DEBUG_ICON,
+		desc = { m.name },
+	})
+end
+
+-- tools (pickaxe/axe/shovel/hoe × 5 tiers) → Tool items (id 2000+)
+local TOOLS = { { "pickaxe", "Pickaxe" }, { "axe", "Axe" }, { "shovel", "Shovel" }, { "hoe", "Hoe" } }
+local ti = 0
+for _, tk in TOOLS do
+	for tier = 1, 5 do
+		ti += 1
+		addGen({
+			id = 2000 + ti,
+			key = `{tk[1]}_{tier}`,
+			name = `{tk[2]} T{tier}`,
+			kind = "Tool",
+			tier = tier,
+			grade = gradeFor(tier),
+			weight = 3,
+			stack = 1,
+			icon = M.DEBUG_ICON,
+			usableIn = { ResourceStar = true },
+			desc = { `Tier {tier} {tk[2]}` },
+		})
+	end
+end
+
+-- every OTHER key referenced by a recipe (blocks/stations/utility) → placeholder Material
+-- (id 3000+), so all recipes resolve. Sorted for stable ids.
+local pkeys: { string } = {}
+local seen: { [string]: boolean } = {}
+for _, r in recipes.LIST do
+	local keys = { r.out.key }
+	for _, ing in recipes.inputsOf(r) do
+		keys[#keys + 1] = ing.key
+	end
+	for _, k in keys do
+		if not byKey[k] and not seen[k] then
+			seen[k] = true
+			pkeys[#pkeys + 1] = k
+		end
+	end
+end
+table.sort(pkeys)
+for i, k in pkeys do
+	addGen({ id = 3000 + i, key = k, name = k, kind = "Material", tier = 1, grade = "common", weight = 1, stack = 99, icon = M.DEBUG_ICON, desc = { k } })
 end
 
 M.DEFS = DEFS

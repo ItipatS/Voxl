@@ -130,4 +130,36 @@ function M.recipesFor(outKey: string): { Recipe }
 	return byOut[outKey] or {}
 end
 
+-- Recipe by id.
+local byId: { [string]: Recipe } = {}
+for _, r in list do
+	assert(not byId[r.id], `recipes: duplicate id '{r.id}'`)
+	byId[r.id] = r
+end
+M.byId = byId
+
+-- Flat {key,count} inputs for a recipe (counts symbols for shaped table recipes).
+function M.inputsOf(r: Recipe): { Ingredient }
+	if r.inputs then
+		return r.inputs
+	end
+	if r.shape and r.keys then
+		local counts: { [string]: number } = {}
+		for _, row in r.shape do
+			for i = 1, #row do
+				local key = r.keys[string.sub(row, i, i)]
+				if key then
+					counts[key] = (counts[key] or 0) + 1
+				end
+			end
+		end
+		local flat: { Ingredient } = {}
+		for key, c in counts do
+			flat[#flat + 1] = { key = key, count = c }
+		end
+		return flat
+	end
+	return {}
+end
+
 return M

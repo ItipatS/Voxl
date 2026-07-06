@@ -171,6 +171,7 @@ Queue.Reliable[17] = table.create(256)
 Queue.Reliable[19] = table.create(256)
 Queue.Reliable[20] = table.create(256)
 Queue.Reliable[21] = table.create(256)
+Queue.Reliable[22] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
 export type BlockCount = { block: number, count: number }
@@ -605,6 +606,14 @@ function SerdesFunctions.ReadEVENT_BoostState(): (boolean)
 	return Value
 end
 
+function SerdesFunctions.ReadEVENT_Craft(): (string)
+	-- Read BLOCK: 2 bytes
+	local BLOCK_START = Read(2)
+	local Length = buffer.readu16(RecieveBuffer, BLOCK_START + 0)
+	local Value = buffer.readstring(RecieveBuffer, Read(Length), Length)
+	return Value
+end
+
 function SerdesFunctions.ReadEVENT_EquipItem(): (number)
 	-- Read BLOCK: 2 bytes
 	local BLOCK_START = Read(2)
@@ -730,6 +739,9 @@ if not RunService:IsRunning() then
 		FireExcept = NOOP
 	},
 	BoostState = {
+		On = NOOP
+	},
+	Craft = {
 		On = NOOP
 	},
 	EquipItem = {
@@ -897,15 +909,26 @@ Reliable.OnServerEvent:Connect(function(Player: Player, Buffer: buffer, Instance
 				table.insert(Queue.Reliable[20], {Player, Value} :: {any})
 			end
 		elseif Index == 21 then
-			local Value: number = SerdesFunctions.ReadEVENT_EquipItem()
+			local Value: string = SerdesFunctions.ReadEVENT_Craft()
 			if Events.Reliable[21] ~= nil then
-				SerdesEvent = "EquipItem"
+				SerdesEvent = "Craft"
 				Events.Reliable[21](Player, Value)
 			else
 				if #Queue.Reliable[21] > 256 then
-					warn("[Blink]: Event queue of \"EquipItem\" exceeded 256, did you forget to implement a listener?")
+					warn("[Blink]: Event queue of \"Craft\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[21], {Player, Value} :: {any})
+			end
+		elseif Index == 22 then
+			local Value: number = SerdesFunctions.ReadEVENT_EquipItem()
+			if Events.Reliable[22] ~= nil then
+				SerdesEvent = "EquipItem"
+				Events.Reliable[22](Player, Value)
+			else
+				if #Queue.Reliable[22] > 256 then
+					warn("[Blink]: Event queue of \"EquipItem\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[22], {Player, Value} :: {any})
 			end
 		end
 	end
@@ -1721,8 +1744,8 @@ local Returns = table.freeze({
 			end
 		end
 	},
-	EquipItem = {
-		On = function(Listener: (Player: Player, Value: number) -> ()): () -> ()
+	Craft = {
+		On = function(Listener: (Player: Player, Value: string) -> ()): () -> ()
 			Events.Reliable[21] = Listener
 			for Index, Arguments in Queue.Reliable[21] do
 				Listener(table.unpack(Arguments))
@@ -1731,6 +1754,20 @@ local Returns = table.freeze({
 			return function (): ()
 				if Events.Reliable[21] == Listener then
 					Events.Reliable[21] = nil
+				end
+			end
+		end
+	},
+	EquipItem = {
+		On = function(Listener: (Player: Player, Value: number) -> ()): () -> ()
+			Events.Reliable[22] = Listener
+			for Index, Arguments in Queue.Reliable[22] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[22] = {}
+			return function (): ()
+				if Events.Reliable[22] == Listener then
+					Events.Reliable[22] = nil
 				end
 			end
 		end

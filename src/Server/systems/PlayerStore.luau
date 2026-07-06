@@ -177,6 +177,17 @@ local function onAdded(player: Player)
     if countKey(profile.Data.slots, "star_seed") < 1 then
         place(profile.Data.slots, "star_seed", 1)
     end
+    -- [TEST] top up basic crafting materials so the craft loop is testable before node
+    -- gathering exists (placeholder-iconed items). Remove once nodes drop raws.
+    local TEST_MATS: { [string]: number } = {
+        wood_1 = 32, rock_1 = 32, fiber_1 = 16, sap_1 = 8,
+        ore_1 = 16, silica_1 = 16, salt_1 = 8, charcoal = 16,
+    }
+    for key, n in TEST_MATS do
+        if countKey(profile.Data.slots, key) < 1 then
+            place(profile.Data.slots, key, n)
+        end
+    end
     profiles[player] = profile
     syncTo(player)
     syncItems(player)

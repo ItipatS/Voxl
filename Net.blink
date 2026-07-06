@@ -312,6 +312,16 @@ event BoostState {
     Data: boolean
 }
 
+-- ---- Crafting (doc 22) ------------------------------------------------------
+-- Client requests a craft by recipe id; the server validates inputs (item slots), consumes
+-- them and grants the output. (Station/time gating + factories layer on later.)
+event Craft {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: string
+}
+
 -- ---- Holding items (hotbar → Tool in hand, doc 20) --------------------------
 -- Client selects a hotbar Tool item to hold (itemdb id; 0 = unequip). The server
 -- validates ownership + kind==Tool and spawns the replicated Tool on the character;
