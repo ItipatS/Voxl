@@ -13,12 +13,14 @@ local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local universe = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("universe"))
+local blink = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("ClientNet"))
 
 local player = Players.LocalPlayer
 
 local RENDER_CELLS = 2 -- slots each way (±2 → 5³ = 125 slots, ~44 stars) [TUNE]
 local STAR_SIZE = 2047 -- planet diameter = the max part size (a bounded world; interior TBD)
 local APPROACH_RADIUS = 4000 -- show a star's name + resource types within this [TUNE]
+local ENTER_RADIUS = 1500 -- fly this close → the "Enter" prompt appears (must be ≤ server ENTER_RADIUS) [TUNE]
 
 local SILK = Font.new("rbxassetid://12187371840", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
 
@@ -139,6 +141,20 @@ local function makeStar(star: universe.Star): Instance
 	nameLbl.Text = star.name
 	local typesLbl = label(bb, 0.62, 0.38, Color3.fromRGB(210, 220, 235))
 	typesLbl.Text = table.concat(star.types, "  ·  ")
+
+	-- Enter prompt (expressive-prompts renders Style=Custom, via Prompts.luau). Appears when
+	-- you fly up to the planet; the server (starentry) validates + teleports into this star.
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Style = Enum.ProximityPromptStyle.Custom
+	prompt.ActionText = "Enter"
+	prompt.ObjectText = star.name
+	prompt.HoldDuration = 0.4
+	prompt.MaxActivationDistance = ENTER_RADIUS
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = part
+	prompt.Triggered:Connect(function()
+		blink.EnterStar.Fire({ cx = star.slot[1], cy = star.slot[2], cz = star.slot[3] })
+	end)
 
 	root.Parent = folder
 	return root

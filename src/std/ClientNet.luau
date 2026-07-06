@@ -188,6 +188,7 @@ export type AsteroidState = { id: number, dp: Vector3, vel: Vector3, size: numbe
 export type AsteroidImpact = { dir: Vector3, stun: number }
 export type MoteRef = { cx: number, cy: number, cz: number, idx: number }
 export type MoteCool = { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number }
+export type StarSlot = { cx: number, cy: number, cz: number }
 export type PlayerStatus = { fuel: number }
 function SerdesFunctions.ReadEVENT_LoadChunks(): ({ { cx: number, cz: number } })
 	-- Read BLOCK: 2 bytes
@@ -625,6 +626,15 @@ function SerdesFunctions.ReadEVENT_DustCooldown(): ({ { ref: { cx: number, cy: n
 	return Value
 end
 
+function SerdesFunctions.WriteEVENT_EnterStar(Value: { cx: number, cy: number, cz: number }): ()
+	-- Allocate BLOCK: 7 bytes
+	local BLOCK_START = Allocate(7)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 19)
+	buffer.writei16(SendBuffer, BLOCK_START + 1, Value.cx)
+	buffer.writei16(SendBuffer, BLOCK_START + 3, Value.cy)
+	buffer.writei16(SendBuffer, BLOCK_START + 5, Value.cz)
+end
+
 function SerdesFunctions.ReadEVENT_PlayerStateSync(): ({ fuel: number })
 	-- Read BLOCK: 4 bytes
 	local BLOCK_START = Read(4)
@@ -636,14 +646,14 @@ end
 function SerdesFunctions.WriteEVENT_BoostState(Value: boolean): ()
 	-- Allocate BLOCK: 2 bytes
 	local BLOCK_START = Allocate(2)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 19)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 20)
 	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value and 1 or 0)
 end
 
 function SerdesFunctions.WriteEVENT_EquipItem(Value: number): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 20)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 21)
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Value)
 end
 
@@ -712,6 +722,9 @@ if not RunService:IsRunning() then
 	},
 	DustCooldown = {
 		On = NOOP
+	},
+	EnterStar = {
+		Fire = NOOP
 	},
 	PlayerStateSync = {
 		On = NOOP
@@ -1161,6 +1174,11 @@ local Returns = table.freeze({
 					Events.Reliable[18] = nil
 				end
 			end
+		end
+	},
+	EnterStar = {
+		Fire = function(Value: { cx: number, cy: number, cz: number }): ()
+			SerdesFunctions.WriteEVENT_EnterStar(Value)
 		end
 	},
 	PlayerStateSync = {

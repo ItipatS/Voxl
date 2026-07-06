@@ -271,6 +271,23 @@ event DustCooldown {
     Data: MoteCool[]
 }
 
+-- ---- Entering a procedural star (lobby → Star place) ------------------------
+-- Client asks to enter the star in a universe SLOT; the lobby server validates (a star
+-- exists there this week + the player is near it), then teleports them to the Star place
+-- with that star's world config (seed/types) in TeleportData.
+struct StarSlot {
+    cx: i16,
+    cy: i16,
+    cz: i16,
+}
+
+event EnterStar {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: StarSlot
+}
+
 -- ---- Player runtime state (server-authoritative; client predicts + reconciles) ---
 -- The server owns the authoritative status and pushes it to the OWNING client a few
 -- times a second (Unreliable — latest wins). The client predicts locally for instant
