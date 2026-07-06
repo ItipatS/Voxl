@@ -1,20 +1,61 @@
 -- Client bootstrap. WaitForChild dependencies explicitly (Rojo live-sync can run
--- this before the tree is replicated).
+-- this before the tree is replicated). One codebase, two places: load the modules
+-- for whichever place this is (std.placemode).
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 ReplicatedStorage:WaitForChild("Packages")
 ReplicatedStorage:WaitForChild("std")
 ReplicatedStorage:WaitForChild("Misc")
 
--- ChunkClient wires the terrain networking (blink.LoadChunks) + meshing loop.
-require(script.Parent:WaitForChild("ChunkClient"))
--- Block inventory (server-synced counts) feeds the hotbar; register its listener
--- early. Hotbar drives block selection; BlockEdit wires dig/place input.
-require(script.Parent:WaitForChild("BlockInventory"))
-require(script.Parent:WaitForChild("Hotbar"))
-require(script.Parent:WaitForChild("BlockEdit"))
--- Inventory window open/close (Bag button / Exit / E key) + block grid render.
-require(script.Parent:WaitForChild("InventoryToggle"))
-require(script.Parent:WaitForChild("InventoryRender"))
--- L drops a claim lock.
-require(script.Parent:WaitForChild("LockController"))
+local placemode = require(ReplicatedStorage.std:WaitForChild("placemode"))
+local here = script.Parent
+
+-- We drive our own hotbar/inventory + attach held Tools to the character (not the
+-- Backpack), so hide Roblox's built-in backpack/inventory GUI entirely.
+local StarterGui = game:GetService("StarterGui")
+task.spawn(function()
+	for _ = 1, 10 do
+		local ok = pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.Backpack, false)
+		if ok then
+			break
+		end
+		task.wait(0.5)
+	end
+end)
+
+local function req(name: string)
+	require(here:WaitForChild(name))
+end
+
+if placemode.Mode == "ResourceStar" then
+	-- RESOURCE STAR — the voxel gathering "wild" (Forest first): terrain streaming
+	-- + build/gather. (Biome-locking + regional seed come next.)
+	req("ChunkClient")
+	req("Prompts") -- styled ProximityPrompt UI (expressive-prompts) for world interactions
+	req("UI") -- the UI framework (Controller/Sound/Tween/Notifier + registry bootstrap) — doc 19
+	req("BlockInventory")
+	req("Hotbar")
+	req("BlockEdit")
+	req("InventoryRender") -- block inventory (blocks fill ItemSlots here; item grid is Lobby-only for now)
+	req("LockController")
+else
+	-- LOBBY (The Cluster) — zero-g jet flight, stars, black hole, collectables.
+	req("FlightController")
+	req("FlightStun") -- asteroid-hit response (stun/knockback/flash); FlightController consults it
+	req("CameraController") -- custom shiftlock camera (scroll→hotbar, alt+scroll→zoom)
+	req("DustField") -- seed-derived collectable star dust (auto-collect → star fuel); replaces StarField
+	req("StarRenderer")
+	req("AsteroidRenderer") -- streamed moving asteroid hazards (server-authoritative)
+	req("SpaceProxies")
+	req("Prompts") -- styled ProximityPrompt UI (expressive-prompts) — Init before prompts exist
+	req("ResourceStarEntry")
+	req("UI") -- the UI framework (Controller/Sound/Tween/Notifier + registry bootstrap) — doc 19
+	req("ZoneWatcher") -- announces biome/zone changes as you fly
+	req("ItemMirror") -- item inventory + weight mirror; Star Seed planting lives here (doc 17)
+	req("ItemInventory") -- item slots + weight bar (Star Seed lives here)
+	req("ItemHotbar") -- Tool items in the hotbar; 1-9/click select → equip (doc 20)
+	req("HeldTools") -- held-tool activation → behavior + particle distance-LOD (doc 20)
+	req("CreatePlanetController") -- the "name your star" prompt (input↔confirm states)
+	req("PlantingController") -- Star Seed → planet overlay on the grid → plant (doc 18)
+	req("Music")
+end

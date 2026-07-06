@@ -1,34 +1,22 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
-local UserInputService = game:GetService("UserInputService")
-local jabby = require(ReplicatedStorage.Packages.jabby)
 local std = ReplicatedStorage.std
 local scheduler = require(std.scheduler)
-local world = require(std.world)
 
 local function start(modules)
+	-- Time each module's require so a slow/blocking load shows up in the console
+	-- (a yielding top-level require stalls the whole sequential boot).
+	local total = os.clock()
 	for _, module in modules do
+		local t = os.clock()
 		require(module)
+		local ms = (os.clock() - t) * 1000
+		if ms > 30 then
+			warn(`[start] '{module.Name}' took {math.floor(ms)}ms to load`)
+		end
 	end
 	local events = scheduler.COLLECT()
 	scheduler.BEGIN(events)
-	--[[jabby.set_check_function(function(player)
-		return true
-	end)
-	if RunService:IsClient() then
-		local player = game:GetService("Players").LocalPlayer
-		local playergui = player:WaitForChild("PlayerGui")
-		local client = jabby.obtain_client()
-		UserInputService.InputBegan:Connect(function(input)
-			if input.KeyCode == Enum.KeyCode.F4 then
-				local home = playergui:FindFirstChild("Home")
-				if home then
-					home:Destroy()
-				end
-				client.spawn_app(client.apps.home)
-			end
-		end)
-	end]]
+	print(`[start] booted {#modules} systems in {math.floor((os.clock() - total) * 1000)}ms`)
 end
 
 return start

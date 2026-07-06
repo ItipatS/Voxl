@@ -73,3 +73,216 @@ event PlaceLock {
     Type: Reliable,
     Call: SingleSync
 }
+
+-- ---- Collectable star field (streamed near-player, like chunks) --------------
+-- A streamed star: network id + absolute position (f32 — the field spans the
+-- whole ~5000-radius area, too big for f16 precision).
+struct StarState {
+    id: u16,
+    dp: vector<f32>,
+}
+
+-- Server streams positions of stars near each player. Unreliable: only new +
+-- moving stars are sent each tick, latest position wins.
+event StarStream {
+    From: Server,
+    Type: Unreliable,
+    Call: SingleSync,
+    Data: StarState[]
+}
+
+-- Server tells a client to drop streamed stars (out of range, or caught).
+event StarUnload {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u16[]
+}
+
+-- Client requests catching a star it's near; server validates proximity.
+event StarCatch {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u16
+}
+
+-- Server confirms a catch (the catching client plays the burst + removes it).
+event StarCaught {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u16
+}
+
+-- ---- Items (slot-based inventory, doc 20) -----------------------------------
+-- One occupied slot: slot index (1-9 hotbar, 10-54 inventory) + itemdb id + count.
+struct SlotEntry {
+    slot: u8,
+    item: u16,
+    count: u32,
+}
+
+-- The player's item slots (occupied only) + derived weight budget. Pushed after
+-- every change (one-writer/full-push, like InventorySync for blocks).
+struct ItemInv {
+    weight: u32,
+    capacity: u32,
+    slots: SlotEntry[],
+}
+
+-- Server pushes the player's slots + weight (on join and after any change).
+event ItemSync {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: ItemInv
+}
+
+-- Client drags a stack between slots (pick up from `from`, drop on `to`); server
+-- swaps/merges authoritatively.
+struct MovePair {
+    from: u8,
+    to: u8,
+}
+
+event MoveItem {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: MovePair
+}
+
+-- Client right-clicks a slot to USE one (Consumables only); server validates.
+event UseSlot {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u8
+}
+
+-- ---- Planting a private star (doc 18) ---------------------------------------
+-- Client proposes a name + grid cell (cx,cz indices). The server re-validates the
+-- cell (plantable + unclaimed) and the name (globally unique), then commits.
+struct PlantRequest {
+    name: string,
+    cx: i16,
+    cz: i16,
+}
+
+event PlantStar {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: PlantRequest
+}
+
+-- Server verdict on a PlantStar request. reason is shown in the prompt's log on failure.
+struct PlantResult {
+    ok: boolean,
+    reason: string,
+}
+
+event PlantStarResult {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: PlantResult
+}
+
+-- ---- Asteroids (streamed MOVING hazards, server-authoritative) --------------
+-- Like the star field, but each asteroid drifts at a constant velocity, so we send
+-- pos + vel ONCE on entry and the client dead-reckons (no per-tick position spam).
+-- shape = index into ReplicatedStorage.Assets.Astroids children; size = world radius.
+struct AsteroidState {
+    id: u16,
+    dp: vector<f32>,
+    vel: vector<f32>,
+    size: f32,
+    shape: u8,
+}
+
+-- Server streams asteroids entering a player's range (with velocity to extrapolate).
+event AsteroidStream {
+    From: Server,
+    Type: Unreliable,
+    Call: SingleSync,
+    Data: AsteroidState[]
+}
+
+-- Server tells a client to drop asteroids (left range, or respawned elsewhere).
+event AsteroidUnload {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u16[]
+}
+
+-- Server tells a client it was struck: unit knockback direction (world) + stun secs.
+-- The server already applied the damage + owns the i-frame window; this is for FEEL
+-- (freeze input, shove, flash, sfx).
+struct AsteroidImpact {
+    dir: vector<f32>,
+    stun: f32,
+}
+
+event AsteroidHit {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: AsteroidImpact
+}
+
+-- ---- Star dust (seed-derived collectable field, chunk-model) ----------------
+-- Dust positions are NOT sent — both sides generate them from a global seed per cell
+-- (std/dust). Only the sparse "collected/cooling" deltas cross the wire. A mote is
+-- addressed by its cell (cx,cy,cz) + local index.
+struct MoteRef {
+    cx: i16,
+    cy: i16,
+    cz: i16,
+    idx: u8,
+}
+
+-- Client auto-collects when it flies through a mote → asks the server (which validates
+-- proximity + that it isn't already cooling).
+event DustCollect {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: MoteRef
+}
+
+-- Server CONFIRMS a collect to the collector → grant star fuel + play the burst + dim.
+event DustCollected {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: MoteRef
+}
+
+-- A mote's cooldown (remaining in DECISECONDS, u16 → up to ~6553s). Sent to nearby
+-- players so they dim it too — both as a live delta on collect AND as the batch a
+-- player gets when they move into a new area (enter-sync).
+struct MoteCool {
+    ref: MoteRef,
+    remaining: u16,
+}
+
+event DustCooldown {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: MoteCool[]
+}
+
+-- ---- Holding items (hotbar → Tool in hand, doc 20) --------------------------
+-- Client selects a hotbar Tool item to hold (itemdb id; 0 = unequip). The server
+-- validates ownership + kind==Tool and spawns the replicated Tool on the character;
+-- clients LOD its particles by distance. No broadcast needed — the Tool replicates.
+event EquipItem {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u16
+}

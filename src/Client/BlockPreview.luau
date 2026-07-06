@@ -23,6 +23,7 @@ function BlockPreview.build(vpf: ViewportFrame, blockId: number)
     end
 
     local part = Instance.new("Part")
+    part.Transparency = 1
     part.Size = Vector3.new(SIZE, SIZE, SIZE)
     part.CFrame = CFrame.new()
     part.Anchored = true

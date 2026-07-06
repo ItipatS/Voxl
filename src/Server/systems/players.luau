@@ -18,16 +18,23 @@ local function playersAdded(player: Player)
 		while rig.Parent ~= workspace do
 			task.wait()
 		end
+		rig.Humanoid.WalkSpeed = 200
+		rig.Humanoid.JumpHeight = 100
 		world:set(e, Character, rig)
 	end)
 end
 
-local function playersRemoved(player: Player) 
+local function playersRemoved(player: Player)
 	local e = ref(player.UserId)
-	world:clear(e)
+	-- Delete the whole entity (full cleanup), guarded — the entity may already be
+	-- gone, and world:clear/delete on a missing entity throws in jecs (was spamming
+	-- an error + a stack trace on every leave, and leaking the connection below).
+	pcall(world.delete, world, e)
 	local connection = conn[e]
-	connection:Disconnect()
-	conn[e] = nil
+	if connection then
+		connection:Disconnect()
+		conn[e] = nil
+	end
 end
 
 local scheduler = require(std.scheduler)
