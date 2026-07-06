@@ -15,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
+local SoundService = game:GetService("SoundService")
 
 local blink = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("ClientNet"))
 local dust = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("dust"))
@@ -23,12 +24,15 @@ local FlightBoost = require(script.Parent:WaitForChild("FlightBoost"))
 local player = Players.LocalPlayer
 local rng = Random.new()
 
-local RENDER_CELLS = 3 -- cells each way around the player (±3 → 7³ = 343 cells)
+local RENDER_CELLS = 2 -- render distance: cells each way (±2 → 5³ = 125 cells, was ±3=343). [TUNE] — becomes a user setting later; lower = less lag, closer dust horizon
 local WOBBLE = 1.5 -- studs of cosmetic client-side drift
 local BASE_TRANSP = 0.1
 local DIM_TRANSP = 0.92
 local COLLECT_THROTTLE = 0.1 -- seconds between auto-collect sweeps
 local PENDING_TIME = 0.6 -- don't re-ask for the same mote until the server has replied
+
+local CollectSound = (SoundService.SFX.Effect.Boost :: Sound):Clone()
+CollectSound.Parent = SoundService
 
 -- Shape templates (same little meshes the decorative dust used).
 local shapes: { BasePart } = {}
@@ -41,7 +45,7 @@ do
 	end
 end
 local burstTemplate = ReplicatedStorage.Assets:WaitForChild("Particles"):WaitForChild("DustCollect") :: ParticleEmitter
-local BURST_COUNT = burstTemplate:GetAttribute("EmitCount") or 60
+local BURST_COUNT = burstTemplate:GetAttribute("EmitCount") or 10
 
 local folder = Instance.new("Folder")
 folder.Name = "DustField"
@@ -185,9 +189,12 @@ local function burst(pos: Vector3, color: Color3)
 	pe.Parent = p
 	pe:Emit(BURST_COUNT)
 	Debris:AddItem(p, 2.5)
+	if not CollectSound.IsPlaying then -- don't restart mid-play → no machine-gun cutoff on dense collects
+		CollectSound:Play()
+	end
 end
 
-blink.DustCollected.On(function(ref)
+local _deadDustCollected = (function(ref) -- REMOVED: collect is instant now; dead handler (safe to delete)
 	-- our own confirmed collect: fuel + burst + dim
 	FlightBoost.addFuel(dust.FUEL_PER_MOTE)
 	local mk = moteKey(ref.cx, ref.cy, ref.cz, ref.idx)
@@ -264,7 +271,13 @@ RunService.RenderStepped:Connect(function(dt: number)
 			local d = m.base - pp
 			if d:Dot(d) <= cr2 then
 				m.pending = now + PENDING_TIME
-				blink.DustCollect.Fire(m.ref)
+				m.coolUntil = now + dust.COOLDOWN
+					m.dimmed = true
+					m.part.Transparency = DIM_TRANSP
+					coolByKey[moteKey(m.ref.cx, m.ref.cy, m.ref.cz, m.ref.idx)] = m.coolUntil
+					FlightBoost.addFuel(dust.FUEL_PER_MOTE)
+					burst(m.base, m.color)
+					blink.DustCollect.Fire(m.ref)
 			end
 		end
 	end

@@ -14,6 +14,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local blink = require(ServerScriptService.ServerNet)
 local dust = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("dust"))
+local PlayerState = require(script.Parent.PlayerState)
 
 local SYNC_RADIUS = 1400 -- broadcast/enter-sync range (≈ client render range)
 local COLLECT_SLACK = 12 -- proximity tolerance over COLLECT_RADIUS (client moves between ticks)
@@ -59,8 +60,9 @@ blink.DustCollect.On(function(plr: Player, ref)
 	end
 	bucket[ref.idx] = now + dust.COOLDOWN
 
-	-- Confirm to the collector (grant fuel + burst + dim) and dim it for onlookers.
-	blink.DustCollected.Fire(plr, ref)
+	-- Grant authoritative fuel (the collector already showed the FEEL instantly + predicted
+	-- this same amount; PlayerStateSync reconciles them). Then dim it for onlookers.
+	PlayerState.grantFuel(plr.UserId, dust.FUEL_PER_MOTE)
 	local cool = { { ref = ref, remaining = math.floor(dust.COOLDOWN * 10) } }
 	for _, other in Players:GetPlayers() do
 		if other ~= plr then

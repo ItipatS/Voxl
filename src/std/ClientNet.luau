@@ -174,7 +174,7 @@ Queue.Unreliable[1] = table.create(256)
 Queue.Reliable[15] = table.create(256)
 Queue.Reliable[16] = table.create(256)
 Queue.Reliable[18] = table.create(256)
-Queue.Reliable[19] = table.create(256)
+Queue.Unreliable[2] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
 export type BlockCount = { block: number, count: number }
@@ -188,6 +188,7 @@ export type AsteroidState = { id: number, dp: Vector3, vel: Vector3, size: numbe
 export type AsteroidImpact = { dir: Vector3, stun: number }
 export type MoteRef = { cx: number, cy: number, cz: number, idx: number }
 export type MoteCool = { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number }
+export type PlayerStatus = { fuel: number }
 function SerdesFunctions.ReadEVENT_LoadChunks(): ({ { cx: number, cz: number } })
 	-- Read BLOCK: 2 bytes
 	local BLOCK_START = Read(2)
@@ -585,17 +586,6 @@ function SerdesFunctions.WriteEVENT_DustCollect(Value: { cx: number, cy: number,
 	buffer.writeu8(SendBuffer, BLOCK_START + 7, Value.idx)
 end
 
-function SerdesFunctions.ReadEVENT_DustCollected(): ({ cx: number, cy: number, cz: number, idx: number })
-	-- Read BLOCK: 7 bytes
-	local BLOCK_START = Read(7)
-	local Value = {} :: any
-	Value.cx = buffer.readi16(RecieveBuffer, BLOCK_START + 0)
-	Value.cy = buffer.readi16(RecieveBuffer, BLOCK_START + 2)
-	Value.cz = buffer.readi16(RecieveBuffer, BLOCK_START + 4)
-	Value.idx = buffer.readu8(RecieveBuffer, BLOCK_START + 6)
-	return Value
-end
-
 function SerdesFunctions.ReadEVENT_DustCooldown(): ({ { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } })
 	-- Read BLOCK: 2 bytes
 	local BLOCK_START = Read(2)
@@ -633,6 +623,21 @@ function SerdesFunctions.ReadEVENT_DustCooldown(): ({ { ref: { cx: number, cy: n
 	end
 	-- END ARRAY
 	return Value
+end
+
+function SerdesFunctions.ReadEVENT_PlayerStateSync(): ({ fuel: number })
+	-- Read BLOCK: 4 bytes
+	local BLOCK_START = Read(4)
+	local Value = {} :: any
+	Value.fuel = buffer.readf32(RecieveBuffer, BLOCK_START + 0)
+	return Value
+end
+
+function SerdesFunctions.WriteEVENT_BoostState(Value: boolean): ()
+	-- Allocate BLOCK: 2 bytes
+	local BLOCK_START = Allocate(2)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 19)
+	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value and 1 or 0)
 end
 
 function SerdesFunctions.WriteEVENT_EquipItem(Value: number): ()
@@ -705,11 +710,14 @@ if not RunService:IsRunning() then
 	DustCollect = {
 		Fire = NOOP
 	},
-	DustCollected = {
-		On = NOOP
-	},
 	DustCooldown = {
 		On = NOOP
+	},
+	PlayerStateSync = {
+		On = NOOP
+	},
+	BoostState = {
+		Fire = NOOP
 	},
 	EquipItem = {
 		Fire = NOOP
@@ -878,26 +886,15 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 				table.insert(Queue.Reliable[16], {Value} :: {any})
 			end
 		elseif Index == 18 then
-			local Value: { cx: number, cy: number, cz: number, idx: number } = SerdesFunctions.ReadEVENT_DustCollected()
+			local Value: { { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } } = SerdesFunctions.ReadEVENT_DustCooldown()
 			if Events.Reliable[18] ~= nil then
-				SerdesEvent = "DustCollected"
+				SerdesEvent = "DustCooldown"
 				Events.Reliable[18](Value)
 			else
 				if #Queue.Reliable[18] > 256 then
-					warn("[Blink]: Event queue of \"DustCollected\" exceeded 256, did you forget to implement a listener?")
-				end
-				table.insert(Queue.Reliable[18], {Value} :: {any})
-			end
-		elseif Index == 19 then
-			local Value: { { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } } = SerdesFunctions.ReadEVENT_DustCooldown()
-			if Events.Reliable[19] ~= nil then
-				SerdesEvent = "DustCooldown"
-				Events.Reliable[19](Value)
-			else
-				if #Queue.Reliable[19] > 256 then
 					warn("[Blink]: Event queue of \"DustCooldown\" exceeded 256, did you forget to implement a listener?")
 				end
-				table.insert(Queue.Reliable[19], {Value} :: {any})
+				table.insert(Queue.Reliable[18], {Value} :: {any})
 			end
 		end
 	end
@@ -928,6 +925,12 @@ Unreliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 			if Events.Unreliable[1] ~= nil then
 				SerdesEvent = "AsteroidStream"
 				Events.Unreliable[1](Value)
+			end
+		elseif Index == 2 then
+			local Value: { fuel: number } = SerdesFunctions.ReadEVENT_PlayerStateSync()
+			if Events.Unreliable[2] ~= nil then
+				SerdesEvent = "PlayerStateSync"
+				Events.Unreliable[2](Value)
 			end
 		end
 	end
@@ -1146,8 +1149,8 @@ local Returns = table.freeze({
 			SerdesFunctions.WriteEVENT_DustCollect(Value)
 		end
 	},
-	DustCollected = {
-		On = function(Listener: (Value: { cx: number, cy: number, cz: number, idx: number }) -> ()): () -> ()
+	DustCooldown = {
+		On = function(Listener: (Value: { { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } }) -> ()): () -> ()
 			Events.Reliable[18] = Listener
 			for Index, Arguments in Queue.Reliable[18] do
 				Listener(table.unpack(Arguments))
@@ -1160,18 +1163,19 @@ local Returns = table.freeze({
 			end
 		end
 	},
-	DustCooldown = {
-		On = function(Listener: (Value: { { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } }) -> ()): () -> ()
-			Events.Reliable[19] = Listener
-			for Index, Arguments in Queue.Reliable[19] do
-				Listener(table.unpack(Arguments))
-			end
-			Queue.Reliable[19] = {}
+	PlayerStateSync = {
+		On = function(Listener: (Value: { fuel: number }) -> ()): () -> ()
+			Events.Unreliable[2] = Listener
 			return function (): ()
-				if Events.Reliable[19] == Listener then
-					Events.Reliable[19] = nil
+				if Events.Unreliable[2] == Listener then
+					Events.Unreliable[2] = nil
 				end
 			end
+		end
+	},
+	BoostState = {
+		Fire = function(Value: boolean): ()
+			SerdesFunctions.WriteEVENT_BoostState(Value)
 		end
 	},
 	EquipItem = {

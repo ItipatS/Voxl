@@ -253,13 +253,8 @@ event DustCollect {
     Data: MoteRef
 }
 
--- Server CONFIRMS a collect to the collector → grant star fuel + play the burst + dim.
-event DustCollected {
-    From: Server,
-    Type: Reliable,
-    Call: SingleSync,
-    Data: MoteRef
-}
+-- (The collector no longer waits for a confirm — collect FEEL is instant client-side;
+-- the server grants authoritative fuel via PlayerStateSync + broadcasts the dim below.)
 
 -- A mote's cooldown (remaining in DECISECONDS, u16 → up to ~6553s). Sent to nearby
 -- players so they dim it too — both as a live delta on collect AND as the batch a
@@ -274,6 +269,30 @@ event DustCooldown {
     Type: Reliable,
     Call: SingleSync,
     Data: MoteCool[]
+}
+
+-- ---- Player runtime state (server-authoritative; client predicts + reconciles) ---
+-- The server owns the authoritative status and pushes it to the OWNING client a few
+-- times a second (Unreliable — latest wins). The client predicts locally for instant
+-- feel (FlightBoost) and reconciles toward this. fuel = star fuel (0-100).
+struct PlayerStatus {
+    fuel: f32,
+}
+
+event PlayerStateSync {
+    From: Server,
+    Type: Unreliable,
+    Call: SingleSync,
+    Data: PlayerStatus
+}
+
+-- Client reports boost START/STOP EDGES (not a per-frame stream) so the server can
+-- simulate authoritative fuel drain/regen to reconcile against.
+event BoostState {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: boolean
 }
 
 -- ---- Holding items (hotbar → Tool in hand, doc 20) --------------------------

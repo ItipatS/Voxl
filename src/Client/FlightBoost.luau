@@ -13,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
+local blink = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("ClientNet"))
 
 local BOOST_MULT = 2.4
 local STAMINA_MAX = 100
@@ -24,9 +25,17 @@ local M = {}
 local stamina = STAMINA_MAX -- this bar IS the "star fuel" — dust refills it (DustField)
 local depleted = false -- once empty, must fully refill before boosting again
 local mult = 1
+local wasBoosting = false
+local serverFuel: number? = nil -- authoritative value from the server; we reconcile toward it
+local RECONCILE = 3 -- how fast predicted fuel is pulled to the server value
 function M.mult(): number
 	return mult
 end
+
+-- Server pushes its authoritative star fuel (~4Hz); we reconcile the predicted bar to it.
+blink.PlayerStateSync.On(function(s)
+	serverFuel = s.fuel
+end)
 
 -- Grant star fuel (collected from dust). Refuelling also lifts the deplete-lock once
 -- there's a usable amount, so scooping dust lets you boost again without a full refill.
@@ -160,12 +169,22 @@ end
 RunService.RenderStepped:Connect(function(dt: number)
 	-- Boost only if NOT depleted; hitting 0 locks it until fully refilled.
 	local boosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and not depleted and stamina > 0 and moving()
+	if boosting ~= wasBoosting then
+		wasBoosting = boosting
+		blink.BoostState.Fire(boosting) -- edge only (start/stop), so the server can sim fuel
+	end
 	if boosting then
 		stamina = math.max(0, stamina - DRAIN * dt)
 		mult = BOOST_MULT
 	else
 		stamina = math.min(STAMINA_MAX, stamina + REGEN * dt)
 		mult = 1
+	end
+	-- Reconcile the predicted value toward the server's authority (corrects drift + picks up
+	-- grants/rejected collects). Gentle so it doesn't fight the local drain.
+	if serverFuel then
+		stamina += (serverFuel - stamina) * math.clamp(RECONCILE * dt, 0, 1)
+		stamina = math.clamp(stamina, 0, STAMINA_MAX)
 	end
 	if stamina <= 0 then
 		depleted = true
