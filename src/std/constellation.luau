@@ -54,13 +54,17 @@ M.VOID_RADIUS = M.BLACKHOLE.radius + 2000 -- 14000
 -- baseScale / distance, so distant stars read smaller — bump baseScale if too small.
 -- (Template names below are legacy biome-flavoured art; starter stars get proper
 -- fancy hub-town names + visuals in the naming pass — see DESIGN.md.)
+-- proxyDist sets the DEPTH the proxy renders at (apparent size = baseScale/d, independent of
+-- it). It must sit BEYOND the universe render distance (UniverseField ≈ 16000) so real planets
+-- render IN FRONT of the landmark proxies instead of the proxies covering everything. [TUNE]
+local PROXY_DIST = 18000
 M.LANDMARKS = {
-	{ template = "BlackHole", pos = CENTER, baseScale = 20, proxyDist = 100 },
-	{ template = "ForestStar", pos = STARTER_STARS[1], baseScale = 6, proxyDist = 500 },
-	{ template = "DesertStar", pos = STARTER_STARS[2], baseScale = 6, proxyDist = 500 },
-	{ template = "MountainStar", pos = STARTER_STARS[3], baseScale = 6, proxyDist = 500 },
-	{ template = "HillStar", pos = STARTER_STARS[4], baseScale = 6, proxyDist = 500 },
-	{ template = "SwampStar", pos = STARTER_STARS[5], baseScale = 6, proxyDist = 500 },
+	{ template = "BlackHole", pos = CENTER, baseScale = 20, proxyDist = PROXY_DIST },
+	{ template = "ForestStar", pos = STARTER_STARS[1], baseScale = 6, proxyDist = PROXY_DIST },
+	{ template = "DesertStar", pos = STARTER_STARS[2], baseScale = 6, proxyDist = PROXY_DIST },
+	{ template = "MountainStar", pos = STARTER_STARS[3], baseScale = 6, proxyDist = PROXY_DIST },
+	{ template = "HillStar", pos = STARTER_STARS[4], baseScale = 6, proxyDist = PROXY_DIST },
+	{ template = "SwampStar", pos = STARTER_STARS[5], baseScale = 6, proxyDist = PROXY_DIST },
 }
 
 -- True if `pos` is far enough from every starter star to plant an island.

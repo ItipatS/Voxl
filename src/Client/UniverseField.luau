@@ -32,6 +32,20 @@ local TIER_COLOR = {
 	Color3.fromRGB(255, 90, 210), -- T5 magenta (rare/spicy)
 }
 
+-- Planet body template: a MeshPart with a SurfaceAppearance, authored in Studio. MOVE it
+-- into ReplicatedStorage.Assets as "Planet" and we clone + tint it (else we fall back to a
+-- Neon ball). We COLOUR by primary resource TYPE (biome variety from one mesh) and set GLOW
+-- STRENGTH by TIER (the soft "brighter = spicier" difficulty hint) via SurfaceAppearance.
+local planetTemplate = ReplicatedStorage:WaitForChild("Essential"):FindFirstChild("Planet")
+
+local TYPE_COLOR: { [string]: Color3 } = {
+	Verdant = Color3.fromRGB(120, 200, 90), -- green
+	Arid = Color3.fromRGB(220, 190, 120), -- sand
+	Rocky = Color3.fromRGB(160, 160, 170), -- grey
+	Frost = Color3.fromRGB(170, 220, 255), -- pale blue
+	Mire = Color3.fromRGB(120, 140, 90), -- murky
+}
+
 -- Fixed for this session; a week rollover mid-session won't reshuffle live yet.
 local WEEK = universe.currentWeek(os.time())
 
@@ -58,40 +72,76 @@ local function label(parent: Instance, yScale: number, height: number, color: Co
 	return t
 end
 
-local function makeStar(star: universe.Star): Instance
-	local color = TIER_COLOR[star.tier] or TIER_COLOR[1]
+local function configurePart(part: BasePart)
+	part.Anchored = true
+	part.CanCollide = true
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	part.Locked = true
+	part.Size = Vector3.one * STAR_SIZE
+end
+
+-- Build the planet body: the authored mesh (tinted via SurfaceAppearance) if present, else a
+-- Neon ball. Returns (root to parent, visible part to position + adorn the billboard to).
+local function buildBody(star: universe.Star): (Instance, BasePart)
+	local typeColor = TYPE_COLOR[star.types[1]] or Color3.new(1, 1, 1)
+	if planetTemplate then
+		local model = planetTemplate:Clone()
+		local mesh: BasePart? = nil
+		if model:IsA("BasePart") then
+			mesh = model
+		else
+			local m = model:FindFirstChildWhichIsA("MeshPart")
+			if m and m:IsA("BasePart") then
+				mesh = m
+			end
+		end
+		if mesh then
+			configurePart(mesh)
+			mesh.CFrame = CFrame.new(star.pos)
+			local sa = mesh:FindFirstChildWhichIsA("SurfaceAppearance")
+			if sa then
+				sa.Color = typeColor -- tint the ColorMap → biome variety
+				sa.EmissiveTint = typeColor
+			end
+			return model, mesh
+		end
+		model:Destroy() -- template has no MeshPart → fall back
+	end
+	-- fallback: Neon ball tinted by tier
 	local p = Instance.new("Part")
-	p.Name = `Star_{star.slot[1]}_{star.slot[2]}_{star.slot[3]}`
 	p.Shape = Enum.PartType.Ball
 	p.Material = Enum.Material.Neon
-	p.Color = color
-	p.Size = Vector3.one * STAR_SIZE
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanQuery = false
-	p.CanTouch = false
-	p.CastShadow = false
-	p.Locked = true
+	p.Color = TIER_COLOR[star.tier] or TIER_COLOR[1]
+	configurePart(p)
 	p.Position = star.pos
+	return p, p
+end
+
+local function makeStar(star: universe.Star): Instance
+	local typeColor = TYPE_COLOR[star.types[1]] or Color3.new(1, 1, 1)
+	local root, part = buildBody(star)
+	root.Name = `Star_{star.slot[1]}_{star.slot[2]}_{star.slot[3]}`
 
 	-- Approach preview: auto-hidden past APPROACH_RADIUS via MaxDistance (no per-frame loop).
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "Approach"
-	bb.Adornee = p
+	bb.Adornee = part
 	bb.Size = UDim2.fromOffset(300, 90)
 	bb.StudsOffsetWorldSpace = Vector3.new(0, STAR_SIZE * 0.65, 0)
 	bb.AlwaysOnTop = true
 	bb.LightInfluence = 0
 	bb.MaxDistance = APPROACH_RADIUS
-	bb.Parent = p
+	bb.Parent = part
 
-	local nameLbl = label(bb, 0, 0.6, color)
+	local nameLbl = label(bb, 0, 0.6, typeColor)
 	nameLbl.Text = star.name
 	local typesLbl = label(bb, 0.62, 0.38, Color3.fromRGB(210, 220, 235))
 	typesLbl.Text = table.concat(star.types, "  ·  ")
 
-	p.Parent = folder
-	return p
+	root.Parent = folder
+	return root
 end
 
 local function loadCell(cx: number, cy: number, cz: number)

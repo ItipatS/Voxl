@@ -59,10 +59,11 @@ function M.motesInCell(cx: number, cy: number, cz: number): { Mote }
 		local color = PALETTE[rng:NextInteger(1, #PALETTE)]
 		local size = rng:NextNumber(M.SIZE_MIN, M.SIZE_MAX)
 		local shape = rng:NextInteger(1, 64) -- client maps into its own shape-template count
-		-- keep motes inside the field but OUT of the maw void zone (dust vanishes near the
-		-- black hole as a danger cue). RNG was already advanced above, so idx stays aligned.
-		local d = (pos - CENTER).Magnitude
-		if d <= M.FIELD_RADIUS and d >= constellation.VOID_RADIUS then
+		-- Dust covers the WHOLE universe except the maw void (dust vanishes near the black
+		-- hole as a danger cue). No outer radius: the field is client-generated per cell around
+		-- the player, so covering everything costs nothing (the server only ever hashes single
+		-- motes to validate a collect). RNG already advanced above, so idx stays aligned.
+		if (pos - CENTER).Magnitude >= constellation.VOID_RADIUS then
 			out[#out + 1] = { idx = i, pos = pos, color = color, size = size, shape = shape }
 		end
 	end

@@ -27,8 +27,11 @@ M.SLOT_SIZE = 8000 -- stud grid spacing between slots (>> planet size so big wor
 M.DENSITY = 0.35 -- fraction of slots that hold an unclaimed star this week [TUNE]
 M.WEEK_SECONDS = 7 * 24 * 3600
 
--- Tier roll: mostly T1, scarce T5 (DESIGN "check your seed"). Weights sum to 100. [TUNE]
-M.TIER_WEIGHTS = { 60, 22, 11, 5, 2 } -- T1 .. T5
+-- Per-BIOME tier roll. A star's featured resource types are each a biome with its OWN tier —
+-- mostly T1, rarer higher, and AT MOST one T5 per star (DESIGN: "mostly T1 … exactly one T5
+-- biome on stars that roll it"). So a star isn't "a Tn star"; it's a mix, and its headline
+-- `tier` is just its best biome. Weights sum to 100. [TUNE]
+M.BIOME_TIER_WEIGHTS = { 80, 14, 4.5, 1.3, 0.2 } -- T1 .. T5  (P(all-3-T1) ≈ 51% of stars)
 
 -- Approach-preview resource TYPES: a star shows 3 of these on approach; tier/node stay
 -- hidden (DESIGN star-approach UX). Placeholder taxonomy [TUNE] — refine with the resource
@@ -42,8 +45,9 @@ export type Star = {
 	slot: { number }, -- {cx,cy,cz} — this IS the starId
 	pos: Vector3,
 	seed: number, -- rolls the star's identity; frozen as originSeed on claim
-	tier: number, -- 1..5
-	types: { string }, -- 3 approach-preview resource types
+	tier: number, -- 1..5 — the star's BEST biome tier (headline / payoff hint; most stars are T1)
+	types: { string }, -- 3 featured resource types (shown on approach)
+	biomes: { { type: string, tier: number } }, -- per-type biome tiers (mostly T1, ≤1 T5)
 	name: string, -- procedural Latin/scientific default name (overridden on claim)
 }
 
@@ -63,16 +67,16 @@ local function slotSeed(cx: number, cy: number, cz: number, week: number): numbe
 end
 
 -- ---- rolls -------------------------------------------------------------------
-local function weightedTier(r: Random): number
+local function biomeTier(r: Random): number
 	local roll = r:NextNumber(0, 100)
 	local acc = 0
-	for tier, w in M.TIER_WEIGHTS do
+	for tier, w in M.BIOME_TIER_WEIGHTS do
 		acc += w
 		if roll < acc then
 			return tier
 		end
 	end
-	return #M.TIER_WEIGHTS
+	return #M.BIOME_TIER_WEIGHTS
 end
 
 local function pick3(r: Random, list: { string }): { string }
@@ -135,10 +139,27 @@ function M.buildStar(cx: number, cy: number, cz: number, seed: number): Star
 		(cy + 0.5) * s + r:NextNumber(-j, j),
 		(cz + 0.5) * s + r:NextNumber(-j, j)
 	)
-	local tier = weightedTier(r)
 	local types = pick3(r, M.RESOURCE_TYPES)
+	-- Each featured type is a biome with its own tier — mostly T1, and AT MOST one T5 per star.
+	-- The headline `tier` is the best biome (the payoff hint the glow can key off).
+	local biomes: { { type: string, tier: number } } = {}
+	local maxTier, hasT5 = 1, false
+	for _, ty in types do
+		local t = biomeTier(r)
+		if t == 5 then
+			if hasT5 then
+				t = 4 -- only one T5 biome per star
+			else
+				hasT5 = true
+			end
+		end
+		biomes[#biomes + 1] = { type = ty, tier = t }
+		if t > maxTier then
+			maxTier = t
+		end
+	end
 	local name = nameFor(r, types)
-	return { slot = { cx, cy, cz }, pos = pos, seed = seed, tier = tier, types = types, name = name }
+	return { slot = { cx, cy, cz }, pos = pos, seed = seed, tier = maxTier, types = types, biomes = biomes, name = name }
 end
 
 -- The UNCLAIMED star in a slot this week (nil if the slot is empty this week or falls in the
