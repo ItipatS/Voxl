@@ -23,7 +23,7 @@ local constellation = require(ReplicatedStorage:WaitForChild("std"):WaitForChild
 local M = {}
 
 M.UNIVERSE_SEED = 770077 -- global; the weekly seed derives from this + the week number
-M.SLOT_SIZE = 4000 -- stud grid spacing between candidate star slots [TUNE]
+M.SLOT_SIZE = 8000 -- stud grid spacing between slots (>> planet size so big worlds don't touch) [TUNE]
 M.DENSITY = 0.35 -- fraction of slots that hold an unclaimed star this week [TUNE]
 M.WEEK_SECONDS = 7 * 24 * 3600
 
@@ -44,6 +44,7 @@ export type Star = {
 	seed: number, -- rolls the star's identity; frozen as originSeed on claim
 	tier: number, -- 1..5
 	types: { string }, -- 3 approach-preview resource types
+	name: string, -- procedural Latin/scientific default name (overridden on claim)
 }
 
 -- ---- deterministic hashing (exact in f64; stable across server + client) -----
@@ -86,6 +87,31 @@ local function pick3(r: Random, list: { string }): { string }
 	return out
 end
 
+-- Procedural star name: a Latin-ish scientific binomial "Genus species", seeded from the
+-- star so it's stable + shared. Genus is drawn from the PRIMARY resource type; species is a
+-- generic Latin descriptor; ~30% get a roman-numeral designation. (Overridden when claimed.)
+local GENUS: { [string]: { string } } = {
+	Verdant = { "Verdantia", "Silvana", "Viridis", "Frondia" },
+	Arid = { "Aridia", "Siccara", "Dunara", "Ustia" },
+	Rocky = { "Petraia", "Saxena", "Montara", "Cragos" },
+	Frost = { "Glacia", "Gelida", "Nivara", "Brumis" },
+	Mire = { "Palusia", "Limara", "Uligo", "Fennis" },
+}
+local SPECIES = {
+	"borealis", "australis", "magna", "minor", "prima", "nova", "antiqua", "profunda",
+	"serena", "aspera", "lucida", "umbra", "ferox", "placida", "errans", "obscura",
+}
+local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII" }
+
+local function nameFor(r: Random, types: { string }): string
+	local g = GENUS[types[1]] or GENUS.Verdant
+	local name = g[r:NextInteger(1, #g)] .. " " .. SPECIES[r:NextInteger(1, #SPECIES)]
+	if r:NextNumber() < 0.3 then
+		name ..= " " .. ROMAN[r:NextInteger(1, #ROMAN)]
+	end
+	return name
+end
+
 function M.cellOf(pos: Vector3): (number, number, number)
 	local s = M.SLOT_SIZE
 	return math.floor(pos.X / s), math.floor(pos.Y / s), math.floor(pos.Z / s)
@@ -101,10 +127,18 @@ end
 function M.buildStar(cx: number, cy: number, cz: number, seed: number): Star
 	local r = Random.new(seed)
 	local s = M.SLOT_SIZE
-	local pos = Vector3.new(cx * s + r:NextNumber(0, s), cy * s + r:NextNumber(0, s), cz * s + r:NextNumber(0, s))
+	-- keep the star in the CENTRAL half of its slot so big worlds never overlap neighbours
+	-- (and cellOf(pos) still maps back to this slot).
+	local j = s * 0.25
+	local pos = Vector3.new(
+		(cx + 0.5) * s + r:NextNumber(-j, j),
+		(cy + 0.5) * s + r:NextNumber(-j, j),
+		(cz + 0.5) * s + r:NextNumber(-j, j)
+	)
 	local tier = weightedTier(r)
 	local types = pick3(r, M.RESOURCE_TYPES)
-	return { slot = { cx, cy, cz }, pos = pos, seed = seed, tier = tier, types = types }
+	local name = nameFor(r, types)
+	return { slot = { cx, cy, cz }, pos = pos, seed = seed, tier = tier, types = types, name = name }
 end
 
 -- The UNCLAIMED star in a slot this week (nil if the slot is empty this week or falls in the

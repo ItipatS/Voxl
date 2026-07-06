@@ -1,11 +1,11 @@
 --!strict
 -- Renders the procedural star FRONTIER (std/universe). For each slot near the player it
--- asks the generator whether a star exists this week and, if so, shows it as a glowing orb
--- at its REAL position, tinted by tier (a soft difficulty hint — DESIGN star-approach UX).
--- Cell load/unload around the player like DustField, but the stars are STATIC (real world
--- positions), so there's no per-frame movement — we only rebuild when you cross into a new
--- cell. Claimed stars (star_<coord> records) will overlay this later; for now it's the raw
--- unclaimed field so you can fly out and actually SEE the universe.
+-- asks the generator whether a star exists this week and, if so, spawns the world as a big
+-- glowing orb at its REAL position, tinted by tier (a soft difficulty hint — DESIGN). Each
+-- star carries an APPROACH PREVIEW billboard (its procedural name + the 3 resource TYPES;
+-- tier/node/quality stay hidden) that auto-shows only when you're near, via MaxDistance —
+-- the "should I go?" hook. Cell load/unload around the player like DustField; stars are
+-- STATIC (real world positions) so there's no per-frame movement. Claimed stars overlay later.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -16,10 +16,13 @@ local universe = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("uni
 
 local player = Players.LocalPlayer
 
-local RENDER_CELLS = 3 -- slots each way around the player (±3 → 7³ = 343 slots, ~120 stars). [TUNE]
-local STAR_SIZE = 500 -- visual orb diameter (worlds are small; [TUNE])
+local RENDER_CELLS = 2 -- slots each way (±2 → 5³ = 125 slots, ~44 stars) [TUNE]
+local STAR_SIZE = 2047 -- planet diameter = the max part size (a bounded world; interior TBD)
+local APPROACH_RADIUS = 4000 -- show a star's name + resource types within this [TUNE]
 
--- Tier → colour + glow. Calm/cool at T1, hot/strange at T5 → "brighter/stranger = spicier"
+local SILK = Font.new("rbxassetid://12187371840", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+
+-- Tier → colour. Calm/cool at T1, hot/strange at T5 → "brighter/stranger = spicier"
 -- (DESIGN: proxy glow as a soft, non-spoiling difficulty hint).
 local TIER_COLOR = {
 	Color3.fromRGB(150, 220, 255), -- T1 calm blue
@@ -29,7 +32,7 @@ local TIER_COLOR = {
 	Color3.fromRGB(255, 90, 210), -- T5 magenta (rare/spicy)
 }
 
--- The week is fixed for this session; a week rollover mid-session won't reshuffle live yet.
+-- Fixed for this session; a week rollover mid-session won't reshuffle live yet.
 local WEEK = universe.currentWeek(os.time())
 
 local folder = Instance.new("Folder")
@@ -40,6 +43,19 @@ local cells: { [string]: { Instance } } = {} -- cellKey -> instances (0 or 1 sta
 
 local function cellKey(cx: number, cy: number, cz: number): string
 	return `{cx},{cy},{cz}`
+end
+
+local function label(parent: Instance, yScale: number, height: number, color: Color3): TextLabel
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.Position = UDim2.fromScale(0, yScale)
+	t.Size = UDim2.new(1, 0, height, 0)
+	t.FontFace = SILK
+	t.TextScaled = true
+	t.TextColor3 = color
+	t.TextStrokeTransparency = 0.4
+	t.Parent = parent
+	return t
 end
 
 local function makeStar(star: universe.Star): Instance
@@ -57,9 +73,22 @@ local function makeStar(star: universe.Star): Instance
 	p.CastShadow = false
 	p.Locked = true
 	p.Position = star.pos
-	-- Neon self-emits (no PointLight — 100+ lights would blow the light budget + lag).
-	-- Tier reads from the colour; higher tiers get a touch bigger for a stronger glow.
-	p.Size = Vector3.one * (STAR_SIZE * (1 + (star.tier - 1) * 0.12))
+
+	-- Approach preview: auto-hidden past APPROACH_RADIUS via MaxDistance (no per-frame loop).
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "Approach"
+	bb.Adornee = p
+	bb.Size = UDim2.fromOffset(300, 90)
+	bb.StudsOffsetWorldSpace = Vector3.new(0, STAR_SIZE * 0.65, 0)
+	bb.AlwaysOnTop = true
+	bb.LightInfluence = 0
+	bb.MaxDistance = APPROACH_RADIUS
+	bb.Parent = p
+
+	local nameLbl = label(bb, 0, 0.6, color)
+	nameLbl.Text = star.name
+	local typesLbl = label(bb, 0.62, 0.38, Color3.fromRGB(210, 220, 235))
+	typesLbl.Text = table.concat(star.types, "  ·  ")
 
 	p.Parent = folder
 	return p
