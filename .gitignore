@@ -15,3 +15,6 @@
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+
+# Personal Claude Code permission grants (not shared)
+.claude/settings.local.json
