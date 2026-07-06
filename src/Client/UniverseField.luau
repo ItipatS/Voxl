@@ -39,11 +39,11 @@ local TIER_COLOR = {
 local planetTemplate = ReplicatedStorage:WaitForChild("Essential"):FindFirstChild("Planet")
 
 local TYPE_COLOR: { [string]: Color3 } = {
-	Verdant = Color3.fromRGB(120, 200, 90), -- green
-	Arid = Color3.fromRGB(220, 190, 120), -- sand
-	Rocky = Color3.fromRGB(160, 160, 170), -- grey
+	Flora = Color3.fromRGB(120, 200, 90), -- green
+	Stone = Color3.fromRGB(160, 160, 170), -- grey
+	Sand = Color3.fromRGB(220, 190, 120), -- tan
 	Frost = Color3.fromRGB(170, 220, 255), -- pale blue
-	Mire = Color3.fromRGB(120, 140, 90), -- murky
+	Bog = Color3.fromRGB(120, 140, 90), -- murky
 }
 
 -- Fixed for this session; a week rollover mid-session won't reshuffle live yet.

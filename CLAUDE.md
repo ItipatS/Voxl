@@ -49,6 +49,7 @@ The design lineage, and the *one load-bearing idea* stolen from each:
 | `.claude/18-planting.md` | Planting a private star: overlay → CreatePlanet prompt → server-validated commit; `UIController` |
 | `.claude/19-ui-conventions.md` | **UI framework + house style** (UIController/UISound/UITween/Notifier): sound, transitions, modals, notices — read before adding any UI |
 | `.claude/20-items-hotbar-tools.md` | Item `kind` (Tool/Consumable/Material), hotbar equip → server-spawned held Tool + particle LOD, activation → behavior |
+| `.claude/21-biomes-and-worldgen.md` | **Biome canon — 5 resource types × 5-tier ladders = 25 biomes, what a TIER means, bounded-star worldgen (reuse `WorldGen`), resource nodes as special meshes** |
 
 ## Decision status convention
 

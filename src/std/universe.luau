@@ -36,7 +36,7 @@ M.BIOME_TIER_WEIGHTS = { 80, 14, 4.5, 1.3, 0.2 } -- T1 .. T5  (P(all-3-T1) ≈ 5
 -- Approach-preview resource TYPES: a star shows 3 of these on approach; tier/node stay
 -- hidden (DESIGN star-approach UX). Placeholder taxonomy [TUNE] — refine with the resource
 -- design (there are 5 types × 5 biomes in DESIGN).
-M.RESOURCE_TYPES = { "Verdant", "Arid", "Rocky", "Frost", "Mire" }
+M.RESOURCE_TYPES = { "Flora", "Stone", "Sand", "Frost", "Bog" } -- the 5 gather families (doc 21)
 
 local CENTER = constellation.CENTER
 local VOID = constellation.VOID_RADIUS -- no procedural stars inside the maw's void zone
@@ -95,11 +95,11 @@ end
 -- star so it's stable + shared. Genus is drawn from the PRIMARY resource type; species is a
 -- generic Latin descriptor; ~30% get a roman-numeral designation. (Overridden when claimed.)
 local GENUS: { [string]: { string } } = {
-	Verdant = { "Verdantia", "Silvana", "Viridis", "Frondia" },
-	Arid = { "Aridia", "Siccara", "Dunara", "Ustia" },
-	Rocky = { "Petraia", "Saxena", "Montara", "Cragos" },
+	Flora = { "Verdantia", "Silvana", "Viridis", "Frondia" },
+	Stone = { "Petraia", "Saxena", "Montara", "Cragos" },
+	Sand = { "Aridia", "Siccara", "Dunara", "Ustia" },
 	Frost = { "Glacia", "Gelida", "Nivara", "Brumis" },
-	Mire = { "Palusia", "Limara", "Uligo", "Fennis" },
+	Bog = { "Palusia", "Limara", "Uligo", "Fennis" },
 }
 local SPECIES = {
 	"borealis", "australis", "magna", "minor", "prima", "nova", "antiqua", "profunda",
@@ -108,7 +108,7 @@ local SPECIES = {
 local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII" }
 
 local function nameFor(r: Random, types: { string }): string
-	local g = GENUS[types[1]] or GENUS.Verdant
+	local g = GENUS[types[1]] or GENUS.Flora
 	local name = g[r:NextInteger(1, #g)] .. " " .. SPECIES[r:NextInteger(1, #SPECIES)]
 	if r:NextNumber() < 0.3 then
 		name ..= " " .. ROMAN[r:NextInteger(1, #ROMAN)]
