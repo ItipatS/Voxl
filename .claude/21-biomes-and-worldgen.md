@@ -71,6 +71,79 @@ signature special-mesh resource. Existing 15-biome defs slot in at the marked ru
 - **T4 Mire** — sinking ground, giant fungus, bog-lights. *node:* giant spore-pods. *(new)*
 - **T5 Spore Hollow** — a cavernous fungal underworld, glowing caps, drifting spores. *node:* prime-spore (grail).
 
+## Resource nodes = MESHES [DECIDED]
+Every gatherable **node is a full authored MESH**, not voxel-built — a T1 tree is a whole
+tree mesh (reads far better than a voxel tree). This **replaces WorldGen's voxel trees**;
+nodes are placed deterministically from `originSeed` (like trees are today) so server+client
+agree and a claimed star's nodes are stable.
+- **Each biome has 3 nodes** — a **Primary** (its family's main resource) + 2 **Secondary**.
+- **T1 = bespoke variety**: the node meshes differ per biome (climate-flavoured — pine in a
+  cold world, palm in a warm one, etc.) so the common tier feels lush and varied.
+- **T2–T5 = iconic + shared**: each higher tier uses **one distinctive mesh** (not per-biome),
+  so rare tiers feel singular. Node **density / yield / tool-requirement scale with tier**.
+- **Meshes live in `ReplicatedStorage.Assets.Resources`** (authored in Studio; names should
+  match the node names below — the client clones them for placement).
+- **Hover overlay**: hovering a node (or a normal tree) shows a **tiny tooltip** (node name +
+  its resource, maybe a mesh-tint on hover). Small + unobtrusive — a client UI pass, reusing
+  the UI framework's `Tooltip`/hover conventions (doc 19).
+
+### Node roles per family
+| Family | Primary (main) | Secondary A | Secondary B |
+|---|---|---|---|
+| **Flora** | Tree (wood) | Shrub (fiber) | Bloom (sap/food) |
+| **Stone** | Ore Vein (ore) | Crystal Cluster (gem) | Loose Rock (stone) |
+| **Sand** | Silica Spire (silica) | Glass Shard (glass) | Salt Crust (salt) |
+| **Frost** | Ice Core (ice) | Cryo Crystal (crystal) | Rime Cluster (cryo-salt) |
+| **Bog** | Spore Pod (spore) | Tar Seep (tar) | Fungal Cap (fungus) |
+
+### FLORA ladder — worked template (the other 4 families follow this shape)
+Each rung: *terrain* · *palette* · **Primary / Secondary A / Secondary B** (mesh names →
+assets later; T1 primaries are the "varied" set, T2+ primaries are the one tier mesh).
+- **T1 Meadow** — flat grass, gentle bumps · soft green + straw · **Sapling** (varied: birch /
+  rowan / young-oak) / **grass tuft** / **wildflower**.
+- **T2 Forest** — rolling, dense canopy · deep green · **Broadleaf Tree** (the T2 mesh) /
+  **berry bush** / **toadstool**.
+- **T3 Jungle** — tall, humid, layered · vivid saturated green · **Jungle Giant** /
+  **vine cluster** / **bromeliad bloom**.
+- **T4 Ancient Grove** — colossal old-growth, root arches, light shafts · dim gold-green ·
+  **Heartwood Elder** (huge, slow, rich) / **mossy log** / **glowcap**.
+- **T5 Bioluminescent Wildwood** — glowing flora, floating leaf-isles · teal/violet glow ·
+  **Lumin-Tree** (grail) / **spore-vine** / **radiant bloom**.
+
+### STONE ladder
+- **T1 Rockland** — low scree + boulders · grey-tan · **Surface Ore** (varied: copper / tin /
+  iron nodules) / **boulder** / **pebble pile**.
+- **T2 Crag** — jagged ridged, exposed stone · slate grey · **Ore Vein** / **gem geode** / **rockfall**.
+- **T3 Highland** — plateaus + cliffs · warm stone · **Rich Vein** / **crystal geode** / **cliff shard**.
+- **T4 Peaks** — sharp mountains, deep caves · cold grey-white · **Deep Lode** / **prime geode** / **scree**.
+- **T5 Floating Monoliths** — gravity-defying stone islands, glow-veined · basalt + glow ·
+  **Voidstone Core** (grail) / **prime-gem cluster** / **drifting shard**.
+
+### SAND ladder
+- **T1 Dunes** — smooth rolling sand · pale tan · **Silica Pocket** (varied: white / red / gold) /
+  **cactus** / **salt patch**.
+- **T2 Desert** — dunes + rock outcrops · ochre · **Silica Spire** / **glass shard** / **salt crust**.
+- **T3 Badlands** — banded mesa cliffs, hoodoos · red-orange bands · **Glass Vein** / **hoodoo shard** / **gypsum crust**.
+- **T4 Mesa** — towering plateaus, canyon slots · deep red · **Crystal-Glass Column** / **geode shard** / **selenite**.
+- **T5 Glass Sea** — fused-glass plain, refractive spires · iridescent clear · **Prime-Glass Spire**
+  (grail) / **mirage shard** / **crystal salt**.
+
+### FROST ladder
+- **T1 Frostfield** — flat snow + frozen ponds · white-blue · **Rime Node** (varied) / **snow-shrub** / **frozen reed**.
+- **T2 Taiga** — snowy conifer hills · blue-green · **Ice Core** / **snow-pine** (tree) / **frost crystal**.
+- **T3 Tundra** — bleak permafrost, ice sheets · pale slate · **Ice Vein** / **cryo crystal** / **lichen**.
+- **T4 Glacier** — carved ice cliffs, crevasses · deep blue · **Deep-Ice Crystal** / **pressure core** / **rime spire**.
+- **T5 Aurora Shelf** — floating ice shelves under an aurora · violet-teal glow · **Aurora-Crystal**
+  (grail) / **singing shard** / **frost bloom**.
+
+### BOG ladder
+- **T1 Marsh** — reedy shallows · murky green · **Peat Node** (varied) / **reed** / **cattail**.
+- **T2 Swamp** — muddy pools, gnarled trees · brown-green · **Fungal Bloom** / **bog-tree** (gnarled) / **tar patch**.
+- **T3 Fen** — deeper mire, tar seeps, mist · dark olive · **Tar Seep** / **giant fungus** / **mist-moss**.
+- **T4 Mire** — sinking ground, bog-lights · sickly green · **Giant Spore-Pod** / **will-o-cap** / **peat column**.
+- **T5 Spore Hollow** — cavernous fungal underworld, glowing caps · bioluminescent purple ·
+  **Prime-Spore** (grail) / **drift-spore** / **lumen-cap**.
+
 ## Bounded-star world generation [DECIDED shape, TUNE numbers]
 A star is **not** an infinite continent — it's a small **bounded world** (`std/starsize`:
 48×48 → 256×256 footprint, tall). Generation reuses `WorldGen` with two changes:
