@@ -1,0 +1,17 @@
+# Package-manager output — regenerate with `wally install` (pinned by wally.lock)
+/Packages/
+/DevPackages/
+/ServerPackages/
+
+# Roblox binaries — built from src/ by Rojo, not the source of truth
+*.rbxl
+*.rbxlx
+*.rbxm
+*.rbxmx
+
+# Rojo
+/sourcemap.json
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
