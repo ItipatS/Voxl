@@ -88,6 +88,23 @@ add({ id = "block_cobblestone", out = I("block_cobblestone"), surface = "table",
 add({ id = "block_glass", out = I("block_glass"), surface = "table", inputs = { I(mk("glass", 1)) } })
 add({ id = "torch", out = I("torch", 4), surface = "table", shape = { "C", "S" }, keys = { C = "charcoal", S = "stick" } })
 
+-- ---- Aesthetic STYLING (doc 22): cosmetic, off the tier tree ----------------
+-- Stains from the Alchemy Vat (natural sources → dye).
+add({ id = "vat_stain_dark", out = I("stain_dark", 2), surface = "vat", time = 4, inputs = { I("charcoal") } })
+add({ id = "vat_stain_pale", out = I("stain_pale", 2), surface = "vat", time = 4, inputs = { I(mk("salt", 1)) } })
+add({ id = "vat_stain_amber", out = I("stain_amber", 2), surface = "vat", time = 4, inputs = { I(mk("sap", 1)) } })
+add({ id = "vat_stain_russet", out = I("stain_russet", 2), surface = "vat", time = 4, inputs = { I(mk("fungus", 1)) } })
+-- plank + stain → styled plank block (same tier; keys → Blocks.luau). Plain plank = oak default.
+local WOOD_STYLES = {
+	{ style = "birch", stain = "stain_pale" },
+	{ style = "spruce", stain = "stain_dark" },
+	{ style = "jungle", stain = "stain_russet" },
+	{ style = "acacia", stain = "stain_amber" },
+}
+for _, w in WOOD_STYLES do
+	add({ id = `style_{w.style}_plank`, out = I(`block_{w.style}_plank`, 4), surface = "table", inputs = { I(mk("plank", 1), 4), I(w.stain) } })
+end
+
 -- Stations + storage (man-made → they DROP, so you can retrieve them).
 add({ id = "station_table", out = I("station_table"), surface = "table", inputs = { I(mk("plank", 1), 4) } })
 add({ id = "station_furnace", out = I("station_furnace"), surface = "table", inputs = { I(mk("rock", 1), 8) } })

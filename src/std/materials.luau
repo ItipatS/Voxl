@@ -8,7 +8,7 @@
 
 local M = {}
 
-export type MatKind = "raw" | "refined" | "fuel"
+export type MatKind = "raw" | "refined" | "fuel" | "stain"
 export type MatDef = {
 	key: string, -- stable code handle
 	name: string, -- display
@@ -80,6 +80,21 @@ add({ key = "charcoal", name = "Charcoal", kind = "fuel", tier = 1 }) -- Furnace
 add({ key = "coal", name = "Coal", kind = "fuel", tier = 1 })
 add({ key = "stick", name = "Stick", kind = "refined", tier = 1 }) -- table: planks → sticks
 add({ key = "rope", name = "Rope", kind = "refined", tier = 1 }) -- table/loom: cloth → rope
+
+-- Stains (dyes) — the AESTHETIC axis (doc 22). From the Alchemy Vat (natural sources); re-skin
+-- planks/stone/glass/cloth cosmetically, OFF the tier tree.
+local STAINS = {
+	{ key = "stain_pale", name = "Pale Stain" }, -- birch
+	{ key = "stain_dark", name = "Dark Stain" }, -- spruce
+	{ key = "stain_russet", name = "Russet Stain" }, -- jungle
+	{ key = "stain_amber", name = "Amber Stain" }, -- acacia
+	{ key = "stain_crimson", name = "Crimson Stain" },
+	{ key = "stain_verdant", name = "Verdant Stain" },
+	{ key = "stain_azure", name = "Azure Stain" },
+}
+for _, s in STAINS do
+	add({ key = s.key, name = s.name, kind = "stain", tier = 1 })
+end
 
 M.DEFS = defs
 

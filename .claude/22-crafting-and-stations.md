@@ -54,6 +54,24 @@ Emerald) from Gem nodes for high components/gear.
 - **Utility / decor**: Torch `stick+sap|coal`, Chest, Ladder, Fence, Door, Lamp `glowstone`, Bed `plank+cloth`, Sign.
 - **Components** (feed advanced recipes/factories): Stick, Panel, Gear `ingot`, Plate `press`, Circuit `gem+plate+wire`, Wire `copper`.
 
+## Two axes: TIER (economy) vs AESTHETIC (building) [DECIDED]
+Materials are **unified per tier** (one `wood_1` — every T1 tree mesh drops it). That's the
+economy/progression axis. Building variety (oak / birch / spruce look) is a **separate, flat,
+cosmetic axis, crafted OFF the tier tree** — so it never bloats the material set or the tree:
+- **Style a block with a STAIN**: `plank_t + stain_X → <style> Plank block` (same tier, purely
+  cosmetic). Plain plank = the default look (oak); stains give birch / spruce / jungle / acacia / …
+- **Stains** = a small dye palette from natural sources (Bloom / berry / tar / salt / fungus) via
+  the **Alchemy Vat**; the same system re-skins **stone / glass / cloth / wool** later — one
+  styling system, huge build variety, tiny material footprint.
+- Aesthetics live in a **styling / decoration sub-menu**, NOT the progression tree. A birch plank
+  is not "above" an oak plank — they're the same tier.
+- **Common building = cheap T1 base + stains**; **premium/glowing décor = high-tier mats directly**
+  (e.g. Luminwood → a light-emitting block). Both coexist.
+
+This resolves the three conflicts: (1) build variety ✓, (2) same-tier cosmetic variants stay OFF
+the tier tree ✓ (and genuine multi-path items like `ingot` from ore *or* dust just list both
+recipes via `byOut` — a feature), (3) the tier-ascension tree stays base-materials-only ✓.
+
 ## The TIER LADDER (the "plan") — doc 11 recipe shape [DECIDED shape, TUNE recipes]
 Ascension = **lower-tier CRAFTED good + same-tier RAW from a deeper biome** (can't skip, can't
 pure-buy at one radius). Applies to tools, armor, and key blocks.
