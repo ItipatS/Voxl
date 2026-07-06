@@ -30,6 +30,7 @@ end
 if placemode.Mode == "ResourceStar" then
 	-- RESOURCE STAR — the voxel gathering "wild" (Forest first): terrain streaming
 	-- + build/gather. (Biome-locking + regional seed come next.)
+	req("StarWorld") -- configure WorldGen for this star's bounded world BEFORE terrain generates
 	req("ChunkClient")
 	req("Prompts") -- styled ProximityPrompt UI (expressive-prompts) for world interactions
 	req("UI") -- the UI framework (Controller/Sound/Tween/Notifier + registry bootstrap) — doc 19

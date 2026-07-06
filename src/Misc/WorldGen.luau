@@ -10,7 +10,14 @@ local CHUNK_SIZE = 16
 local WORLD_HEIGHT = 256
 local BLOCK_SIZE = 3.5
 
-local BASE_SEED = 1339
+local BASE_SEED = 1339 -- active noise seed; a bounded star overrides this per-world (applyStar)
+
+-- Bounded-STAR mode (the explore-and-claim per-star world, doc 21). When applyStar() is
+-- called (in the Star/ResourceStar place), generation becomes a bounded disc seeded per
+-- star with a RESTRICTED biome palette. Unset = legacy infinite continent. Both server +
+-- client call applyStar with the SAME config (std/starconfig) so terrain matches.
+local starRadius: number? = nil -- island radius in BLOCKS (star centre at world 0,0)
+local starBiomes: { number }? = nil -- the star's biome palette (ids), most-common first
 
 -- Block ids live in the registry (Blocks.luau); WorldGen just references them.
 WorldGen.BLOCK = Blocks.ID
@@ -124,6 +131,50 @@ local Biomes: { [number]: BiomeDef } = {
 }
 
 
+-- ===================== Bounded-star helpers (doc 21) =====================
+-- Radial island falloff: 1 in the interior, smoothstep down to 0 at the rim, void beyond
+-- (star centre = world origin). Applied to column height so the disc slopes into the void.
+local function islandFactor(wx: number, wz: number): number
+    local rad = starRadius :: number
+    local r = math.sqrt(wx * wx + wz * wz)
+    local inner = rad * 0.72
+    if r <= inner then
+        return 1
+    elseif r >= rad then
+        return 0
+    end
+    local t = (r - inner) / (rad - inner)
+    return 1 - t * t * (3 - 2 * t)
+end
+
+-- Pick a biome from the star's palette via a low-freq region field. Earlier entries (lower
+-- tiers) get exponentially more area; the last entry (a T5) is a small patch.
+local function pickStarBiome(wx: number, wz: number): number
+    local list = starBiomes :: { number }
+    local n = #list
+    if n <= 1 then
+        return list[1] or 1
+    end
+    local field = n01(noise2D(BASE_SEED + 800, wx * 0.012, wz * 0.012))
+    local total = 0
+    for i = 1, n do
+        total += 0.5 ^ (i - 1)
+    end
+    local acc = 0
+    for i = 1, n do
+        acc += (0.5 ^ (i - 1)) / total
+        if field < acc then
+            return list[i]
+        end
+    end
+    return list[n]
+end
+
+-- Coarse resource-TYPE → representative biome (doc 21 ladder mapping; tier refinement later).
+local TYPE_BIOME: { [string]: number } = {
+    Flora = 3, Stone = 4, Sand = 2, Frost = 10, Bog = 8, -- Forest, Crag, Desert, Taiga, Swamp
+}
+
 local function sampleHeightNoise(wx: number, wz: number): number
     -- 1) Very low freq = continents / big basins
     local cScale = 0.0004
@@ -182,6 +233,15 @@ local function pickBiome(temp: number, humid: number, baseHeight01: number): num
         elseif humid < 0.62 then return B_SAVANNA
         else return B_JUNGLE end
     end
+end
+
+-- Star-aware biome pick: a bounded star uses its restricted region palette; the legacy
+-- infinite world uses the climate grid.
+local function resolveBiome(wx: number, wz: number, temp: number, humid: number, base01: number): number
+    if starBiomes then
+        return pickStarBiome(wx, wz)
+    end
+    return pickBiome(temp, humid, base01)
 end
 
 -- simple cave noise
@@ -349,8 +409,17 @@ local function computeColumnHeight(
         h = h * (1 - t) + (WATER_LEVEL - 8) * t
     end
 
-    if h < 0 then
-        h = 0
+    -- Bounded star: taper the disc edge down into the void; beyond the rim there's nothing.
+    if starRadius then
+        local f = islandFactor(wx, wz)
+        if f <= 0 then
+            return -1 -- void column (no terrain here)
+        end
+        h = -1 + (h + 1) * f
+    end
+
+    if h < -1 then
+        h = -1
     elseif h > WORLD_HEIGHT - 1 then
         h = WORLD_HEIGHT - 1
     end
@@ -373,7 +442,7 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
             local temp   = sampleTempNoise(wx, wz)
             local humid  = sampleHumidityNoise(wx, wz)
 
-            local biomeId = pickBiome(temp, humid, base01)
+            local biomeId = resolveBiome(wx, wz, temp, humid, base01)
             biomeField[lx + lz * CHUNK_SIZE + 1] = biomeId
 
             local height = computeColumnHeight(wx, wz, biomeId, base01)
@@ -381,8 +450,10 @@ function WorldGen.generateChunkFull(cx: number, cz: number): ChunkFull
             local i = lx + lz * CHUNK_SIZE + 1
             heightFields[i] = height
 
-            if height < minY then minY = height end
-            if height > maxY then maxY = height end
+            if height >= 0 then -- skip star void columns (-1) so min/max stay sane
+                if height < minY then minY = height end
+                if height > maxY then maxY = height end
+            end
         end
     end
 
@@ -460,7 +531,7 @@ function WorldGen.getSurfaceHeight(wx: number, wz: number): number
     local base01 = sampleHeightNoise(wx, wz)
     local temp   = sampleTempNoise(wx, wz)
     local humid  = sampleHumidityNoise(wx, wz)
-    local biomeId = pickBiome(temp, humid, base01)
+    local biomeId = resolveBiome(wx, wz, temp, humid, base01)
     return computeColumnHeight(wx, wz, biomeId, base01)
 end
 
@@ -471,7 +542,7 @@ function WorldGen.getColumn(wx: number, wz: number): (number, number)
     local base01 = sampleHeightNoise(wx, wz)
     local temp   = sampleTempNoise(wx, wz)
     local humid  = sampleHumidityNoise(wx, wz)
-    local biomeId = pickBiome(temp, humid, base01)
+    local biomeId = resolveBiome(wx, wz, temp, humid, base01)
     return computeColumnHeight(wx, wz, biomeId, base01), biomeId
 end
 
@@ -533,6 +604,28 @@ for id, b in Biomes do
     end
 end
 WorldGen.TREE_BIOMES = TREE_BIOMES
+
+-- ---- bounded-star config (doc 21): both server + client call the SAME applyStar ----
+function WorldGen.applyStar(seed: number, radiusBlocks: number, biomeIds: { number })
+    BASE_SEED = seed
+    starRadius = radiusBlocks
+    starBiomes = biomeIds
+    table.clear(treeCache) -- seed changed → old tree decisions are stale
+    treeCacheN = 0
+end
+
+-- Build the palette from the universe's rolled resource TYPES (coarse type→biome; doc 21).
+function WorldGen.applyStarByTypes(seed: number, radiusBlocks: number, types: { string })
+    local ids: { number } = {}
+    for _, t in types do
+        ids[#ids + 1] = TYPE_BIOME[t] or 1
+    end
+    WorldGen.applyStar(seed, radiusBlocks, ids)
+end
+
+function WorldGen.isStar(): boolean
+    return starRadius ~= nil
+end
 
 WorldGen.CAVE_START_Y = CAVE_START_Y
 WorldGen.TREE_MAX_H = TREE_MAX_H

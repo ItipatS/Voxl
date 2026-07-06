@@ -21,8 +21,13 @@ end
 
 local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation")
 if spawn then
-    local pos = spawn.Position
-    spawn.CFrame = CFrame.new(pos.X, surfaceTopY(pos.X, pos.Z) + SPAWN_CLEARANCE, pos.Z)
+    -- Bounded stars are centred at world origin, so spawn on the island centre; the legacy
+    -- infinite world keeps the authored spawn XZ.
+    local sx, sz = spawn.Position.X, spawn.Position.Z
+    if WorldGen.isStar() then
+        sx, sz = 0, 0
+    end
+    spawn.CFrame = CFrame.new(sx, surfaceTopY(sx, sz) + SPAWN_CLEARANCE, sz)
     spawn.Anchored = true
 end
 
