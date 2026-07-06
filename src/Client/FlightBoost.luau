@@ -20,16 +20,22 @@ local STAMINA_MAX = 100
 local DRAIN = 30 -- per second while boosting
 local REGEN = 16 -- per second while not
 local PITCH_RISE = 0.9 -- extra PlaybackSpeed added at 0 stamina
+local REBOOST_COOLDOWN = 0.75 -- after boost stops, wait this before you can boost again (debounce)
+local SFX_FADE = 6 -- boost-sound volume fade speed (per second) — fades out, never hard-cuts
 
 local M = {}
 local stamina = STAMINA_MAX -- this bar IS the "star fuel" — dust refills it (DustField)
-local depleted = false -- once empty, must fully refill before boosting again
 local mult = 1
 local wasBoosting = false
+local curBoosting = false -- exposed for FlightStun (Hit vs Miss asteroid sound)
+local boostReadyAt = 0 -- os.clock; can't (re)boost until now >= this
 local serverFuel: number? = nil -- authoritative value from the server; we reconcile toward it
 local RECONCILE = 3 -- how fast predicted fuel is pulled to the server value
 function M.mult(): number
 	return mult
+end
+function M.boosting(): boolean
+	return curBoosting
 end
 
 -- Server pushes its authoritative star fuel (~4Hz); we reconcile the predicted bar to it.
@@ -41,9 +47,6 @@ end)
 -- there's a usable amount, so scooping dust lets you boost again without a full refill.
 function M.addFuel(n: number)
 	stamina = math.min(STAMINA_MAX, stamina + n)
-	if stamina > 15 then
-		depleted = false
-	end
 end
 
 -- ---- particle + sound templates ---------------------------------------------
@@ -70,6 +73,7 @@ camFx.Parent = Workspace
 
 -- Boost sound (looped; pitch scales with stamina).
 local boostSound = (SoundService.SFX.Effect.Spaceboost :: Sound):Clone()
+local BOOST_VOL = boostSound.Volume -- authored volume = fade-in target
 boostSound.Looped = true
 boostSound.Parent = SoundService
 
@@ -167,12 +171,20 @@ local function moving(): boolean
 end
 
 RunService.RenderStepped:Connect(function(dt: number)
-	-- Boost only if NOT depleted; hitting 0 locks it until fully refilled.
-	local boosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and not depleted and stamina > 0 and moving()
+	-- Boost gate: holding shift + moving + have fuel + past the re-engage cooldown.
+	local now = os.clock()
+	local boosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+		and stamina > 0
+		and now >= boostReadyAt
+		and moving()
 	if boosting ~= wasBoosting then
 		wasBoosting = boosting
+		if not boosting then
+			boostReadyAt = now + REBOOST_COOLDOWN -- start the debounce cooldown on stop
+		end
 		blink.BoostState.Fire(boosting) -- edge only (start/stop), so the server can sim fuel
 	end
+	curBoosting = boosting
 	if boosting then
 		stamina = math.max(0, stamina - DRAIN * dt)
 		mult = BOOST_MULT
@@ -186,17 +198,12 @@ RunService.RenderStepped:Connect(function(dt: number)
 		stamina += (serverFuel - stamina) * math.clamp(RECONCILE * dt, 0, 1)
 		stamina = math.clamp(stamina, 0, STAMINA_MAX)
 	end
-	if stamina <= 0 then
-		depleted = true
-	elseif stamina >= STAMINA_MAX then
-		depleted = false
-	end
 	local frac = stamina / STAMINA_MAX
 
 	if fill then
 		fill.Size = UDim2.fromScale(frac, 1)
 		-- red the whole recharge while locked; blue once it's usable again
-		fill.BackgroundColor3 = if depleted then Color3.fromRGB(235, 90, 90) else Color3.fromRGB(120, 200, 255)
+		fill.BackgroundColor3 = if now < boostReadyAt then Color3.fromRGB(235, 90, 90) else Color3.fromRGB(120, 200, 255)
 	end
 	if bar then
 		bar.Enabled = boosting or frac < 0.999 -- show while boosting or refilling
@@ -207,13 +214,16 @@ RunService.RenderStepped:Connect(function(dt: number)
 	setEmitters(camFx, boosting)
 	camFx.CFrame = Workspace.CurrentCamera.CFrame * CFrame.new(0, 0, -4) -- behind camera
 
+	-- Fade the boost sound in/out — never a hard cut on release.
+	local targetVol = if boosting then BOOST_VOL else 0
+	boostSound.Volume += (targetVol - boostSound.Volume) * math.clamp(SFX_FADE * dt, 0, 1)
 	if boosting then
 		if not boostSound.IsPlaying then
 			boostSound:Play()
 		end
 		boostSound.PlaybackSpeed = 1 + (1 - frac) * PITCH_RISE -- lower stamina → higher pitch
-	elseif boostSound.IsPlaying then
-		boostSound:Stop()
+	elseif boostSound.IsPlaying and boostSound.Volume < 0.02 then
+		boostSound:Stop() -- only once it's faded out
 	end
 end)
 

@@ -174,23 +174,26 @@ local function refreshCells(cx: number, cy: number, cz: number)
 end
 
 -- ---- collect confirmations + cooldown broadcasts ----------------------------
-local function burst(pos: Vector3, color: Color3)
-	local p = Instance.new("Part")
-	p.Anchored = true
-	p.CanCollide = false
-	p.CanQuery = false
-	p.Transparency = 1
-	p.Size = Vector3.one
-	p.CFrame = CFrame.new(pos)
-	p.Parent = folder
+-- Collect FX on the PLAYER: the burst emits at the HRP (follows you) and the sound plays
+-- ON the character (3D → reliable) as a rate-limited clone-per-collect (always plays, no
+-- IsPlaying-skip). Use a SHORT collect sound so overlapping blips read cleanly.
+local sfxLast = 0
+local function burst(root: BasePart, color: Color3)
+	local att = Instance.new("Attachment")
+	att.Parent = root
 	local pe = burstTemplate:Clone()
 	pe.Color = ColorSequence.new(color)
 	pe.Enabled = false
-	pe.Parent = p
+	pe.Parent = att
 	pe:Emit(BURST_COUNT)
-	Debris:AddItem(p, 2.5)
-	if not CollectSound.IsPlaying then -- don't restart mid-play → no machine-gun cutoff on dense collects
-		CollectSound:Play()
+	Debris:AddItem(att, 2.5)
+	local t = os.clock()
+	if t - sfxLast > 0.08 then
+		sfxLast = t
+		local c = CollectSound:Clone()
+		c.Parent = root
+		c:Play()
+		Debris:AddItem(c, 2)
 	end
 end
 
@@ -276,7 +279,7 @@ RunService.RenderStepped:Connect(function(dt: number)
 					m.part.Transparency = DIM_TRANSP
 					coolByKey[moteKey(m.ref.cx, m.ref.cy, m.ref.cz, m.ref.idx)] = m.coolUntil
 					FlightBoost.addFuel(dust.FUEL_PER_MOTE)
-					burst(m.base, m.color)
+					burst(root, m.color)
 					blink.DustCollect.Fire(m.ref)
 			end
 		end

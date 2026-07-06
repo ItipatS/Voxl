@@ -1,18 +1,23 @@
 --!strict
 -- Lobby BGM: shuffle-cycle the SoundService.Musics playlist (cozy ambient/piano).
--- Client-side so each player gets their own shuffle; playing the local replica of
--- a SoundService Sound is independent per client. Respects each track's authored
--- Volume; only forces Looped = false so we can advance on Ended.
+-- Client-side so each player gets their own shuffle. Each track FADES in, FADES out near
+-- its end, then there's a random SILENCE before the next — so it breathes instead of
+-- looping wall-to-wall. Respects each track's authored Volume as the fade-in target.
 
 local SoundService = game:GetService("SoundService")
 
 local musicsFolder = SoundService:WaitForChild("Musics")
 local rng = Random.new()
 
+local FADE = 2.5 -- fade in / out seconds
+local PAUSE_MIN, PAUSE_MAX = 6, 20 -- silence between tracks (seconds) [TUNE]
+
 local tracks: { Sound } = {}
+local baseVol: { [Sound]: number } = {}
 for _, s in musicsFolder:GetChildren() do
 	if s:IsA("Sound") then
 		s.Looped = false
+		baseVol[s] = s.Volume -- authored volume = fade-in target
 		tracks[#tracks + 1] = s
 	end
 end
@@ -27,21 +32,43 @@ for i = #tracks, 2, -1 do
 	tracks[i], tracks[j] = tracks[j], tracks[i]
 end
 
-local idx = 0
-local function playNext()
-	idx = idx % #tracks + 1
-	tracks[idx]:Play()
-end
-
--- Advance when the current track finishes (loop the playlist forever).
-for _, s in tracks do
-	s.Ended:Connect(function()
-		if tracks[idx] == s then
-			playNext()
+local function fade(s: Sound, from: number, to: number, dur: number)
+	local t0 = os.clock()
+	while true do
+		local a = math.min((os.clock() - t0) / dur, 1)
+		s.Volume = from + (to - from) * a
+		if a >= 1 then
+			break
 		end
-	end)
+		task.wait(0.03)
+	end
 end
 
-playNext()
+local idx = 0
+task.spawn(function()
+	while true do
+		idx = idx % #tracks + 1
+		local s = tracks[idx]
+		local vol = baseVol[s]
+		s.TimePosition = 0
+		s.Volume = 0
+		s:Play()
+		fade(s, 0, vol, FADE)
+
+		-- play until it's time to fade out (TimeLength known once loaded) or it ends on its own
+		while s.IsPlaying do
+			local len = s.TimeLength
+			if len > 0 and s.TimePosition >= len - FADE then
+				fade(s, s.Volume, 0, FADE)
+				break
+			end
+			task.wait(0.25)
+		end
+		s:Stop()
+		s.Volume = vol -- restore for next time
+
+		task.wait(rng:NextNumber(PAUSE_MIN, PAUSE_MAX)) -- silence between tracks
+	end
+end)
 
 return {}

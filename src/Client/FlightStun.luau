@@ -12,6 +12,7 @@ local SoundService = game:GetService("SoundService")
 local Debris = game:GetService("Debris")
 
 local blink = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("ClientNet"))
+local FlightBoost = require(script.Parent:WaitForChild("FlightBoost"))
 local player = Players.LocalPlayer
 
 local KNOCK_SPEED = 260 -- initial shove (studs/s) along the hit direction
@@ -69,10 +70,13 @@ local function playImpact()
 	if not eff then
 		return
 	end
-	local s = eff:FindFirstChild("Hit") or eff:FindFirstChild("Impact") or eff:FindFirstChild("Explosion")
+	-- Boosting into a rock = a heavy "Hit"; drifting or standing into one = a lighter "Miss".
+	local s = eff:FindFirstChild(if FlightBoost.boosting() then "Hit" else "Miss")
 	if s and s:IsA("Sound") then
 		local c = s:Clone()
-		c.Parent = SoundService
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		c.Parent = if root and root:IsA("BasePart") then root else SoundService -- on the player = reliable
 		c:Play()
 		Debris:AddItem(c, 3)
 	end
