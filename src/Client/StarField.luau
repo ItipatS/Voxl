@@ -13,8 +13,8 @@ local Workspace = game:GetService("Workspace")
 local rng = Random.new()
 
 --=====================================================================
-local DUST_COUNT   = 1800           -- more, to fill the bigger wrap volume
-local FIELD_RADIUS = 1800           -- half-size of the cube around the camera. Bigger =
+local DUST_COUNT   = 900           -- more, to fill the bigger wrap volume
+local FIELD_RADIUS = 1200          -- half-size of the cube around the camera. Bigger =
                                     -- dust is farther = parallaxes SLOWER (fixes "too fast")
 
 local DUST_SIZE    = NumberRange.new(4, 16)     -- bigger, so distant specks still read

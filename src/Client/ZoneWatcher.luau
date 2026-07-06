@@ -1,49 +1,35 @@
 -- StarterPlayerScripts/ZoneWatcher.luau  (Lobby)
--- Announces the zone you're flying through — a biome resource-star's airspace, the
--- black hole's pull, or open Cluster — via Notifier.zone when it CHANGES. The first
--- zone at spawn is set silently (no title spam on join). Poll-based + debounced.
--- See .claude/19-ui-conventions.
+-- Announces the zone you're in (all zones declared in std/zones — THE framework) via
+-- Notifier.zone whenever it changes. Fires on JOIN and on RESPAWN too — a "where am I"
+-- gimmick (current resets on CharacterAdded). Poll-based + debounced by change-detection.
+-- Add/define zones in std/zones, not here. See .claude/19-ui-conventions.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local constellation = require(ReplicatedStorage.std.constellation)
+local zones = require(ReplicatedStorage.std.zones)
 local Notifier = require(script.Parent.UI).Notify
 
 local player = Players.LocalPlayer
-local BH = constellation.BLACKHOLE
-local ZONE_RADIUS = 1600 -- how close to a starter star counts as "in its airspace"
-
--- Returns (id, title, subtitle). id drives change-detection; title/subtitle display.
-local function zoneAt(pos: Vector3): (string, string, string?)
-	if (pos - BH.pos).Magnitude < BH.radius then
-		return "maw", "The Maw", "Nothing escapes"
-	end
-	for _, lm in constellation.LANDMARKS do
-		if lm.template ~= "BlackHole" and (pos - lm.pos).Magnitude < ZONE_RADIUS then
-			local biome = (lm.template :: string):gsub("Star$", "")
-			return lm.template, biome, "Starter Star"
-		end
-	end
-	return "cluster", "Cluster", nil
-end
+local POLL = 0.4
 
 local current: string? = nil
+player.CharacterAdded:Connect(function()
+	current = nil -- re-announce the zone after (re)spawn
+end)
 
 task.spawn(function()
 	while true do
 		local char = player.Character
 		local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
 		if root then
-			local id, title, subtitle = zoneAt(root.Position)
-			if id ~= current then
-				if current ~= nil then -- silent on the very first detection (spawn)
-					Notifier.zone(title, subtitle)
-				end
-				current = id
+			local z = zones.at(root.Position)
+			if z.id ~= current then
+				current = z.id
+				Notifier.zone(z.title, z.subtitle)
 			end
 		end
-		task.wait(0.4)
+		task.wait(POLL)
 	end
 end)
 

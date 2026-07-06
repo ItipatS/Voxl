@@ -36,6 +36,7 @@ local SIM_HZ         = 20
 --=====================================================================
 
 local CENTER = config.CENTER
+local VOID = config.VOID_RADIUS -- stars stop appearing within this of the maw
 local rng = Random.new()
 
 type Star = { home: Vector3, pos: Vector3, vel: Vector3, seed: number, moving: boolean }
@@ -46,7 +47,10 @@ local function randomHome(): Vector3
 	if dir.Magnitude < 1e-3 then
 		dir = Vector3.yAxis
 	end
-	return CENTER + dir.Unit * (FIELD_RADIUS * rng:NextNumber(0, 1) ^ (1 / 3))
+	-- volume-uniform in the SHELL [VOID, FIELD_RADIUS] — no stars inside the maw void zone
+	local t = rng:NextNumber(0, 1)
+	local r = (VOID ^ 3 + t * (FIELD_RADIUS ^ 3 - VOID ^ 3)) ^ (1 / 3)
+	return CENTER + dir.Unit * r
 end
 
 for i = 1, STAR_COUNT do

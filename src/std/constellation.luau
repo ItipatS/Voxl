@@ -43,6 +43,11 @@ local M = {
 	},
 }
 
+-- Void danger zone: dust + collectable stars stop generating within this of CENTER, and
+-- a warning sphere (Client/MawWarning) marks it — so the field thinning + the ominous shell
+-- warn you BEFORE the event horizon at BLACKHOLE.radius. [TUNE] the margin.
+M.VOID_RADIUS = M.BLACKHOLE.radius + 2000 -- 14000
+
 -- Landmark parallax proxies (black hole + starter stars). The CLIENT renders each
 -- as a proxy cloned from ReplicatedStorage.Assets[template] kept close to the camera;
 -- `pos` is the REAL world position (server gameplay uses it too). apparent size ∝

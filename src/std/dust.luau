@@ -8,6 +8,9 @@
 
 local M = {}
 
+local constellation =
+	require(game:GetService("ReplicatedStorage"):WaitForChild("std"):WaitForChild("constellation")) -- maw VOID_RADIUS (shared)
+
 M.DUST_SEED = 20260706 -- global; everyone generates the same field. (bump = reshuffle)
 M.CELL_SIZE = 400 -- stud cube per cell
 M.MOTES_PER_CELL = 5
@@ -56,7 +59,10 @@ function M.motesInCell(cx: number, cy: number, cz: number): { Mote }
 		local color = PALETTE[rng:NextInteger(1, #PALETTE)]
 		local size = rng:NextNumber(M.SIZE_MIN, M.SIZE_MAX)
 		local shape = rng:NextInteger(1, 64) -- client maps into its own shape-template count
-		if (pos - CENTER).Magnitude <= M.FIELD_RADIUS then
+		-- keep motes inside the field but OUT of the maw void zone (dust vanishes near the
+		-- black hole as a danger cue). RNG was already advanced above, so idx stays aligned.
+		local d = (pos - CENTER).Magnitude
+		if d <= M.FIELD_RADIUS and d >= constellation.VOID_RADIUS then
 			out[#out + 1] = { idx = i, pos = pos, color = color, size = size, shape = shape }
 		end
 	end

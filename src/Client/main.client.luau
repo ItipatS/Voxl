@@ -47,6 +47,7 @@ else
 	req("StarRenderer")
 	req("AsteroidRenderer") -- streamed moving asteroid hazards (server-authoritative)
 	req("SpaceProxies")
+	req("MawWarning") -- ominous void-zone sphere at the maw (dust/stars stop generating inside it)
 	req("Prompts") -- styled ProximityPrompt UI (expressive-prompts) — Init before prompts exist
 	req("ResourceStarEntry")
 	req("UI") -- the UI framework (Controller/Sound/Tween/Notifier + registry bootstrap) — doc 19
