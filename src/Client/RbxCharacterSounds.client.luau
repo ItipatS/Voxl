@@ -1,0 +1,13 @@
+-- Intentionally empty — DO NOT add logic here.
+--
+-- Roblox auto-injects a default `RbxCharacterSounds` LocalScript into every player's
+-- PlayerScripts, which creates the movement Sounds on the HumanoidRootPart (Running /
+-- footsteps, Jumping, Landing, FreeFalling, Splash, Swimming, …) and drives them off the
+-- Humanoid's state. Disabling the `Animate` script (FlightController) does NOT stop these —
+-- they're a separate default script.
+--
+-- The engine skips injecting its default when StarterPlayerScripts already contains a script
+-- of the SAME NAME. So this empty override suppresses ALL default character SFX — correct for
+-- a zero-G flight lobby where the ground "Running" loop plays constantly under flight movement.
+-- If you later want jump/land SFX back, re-implement them here (or play them yourself), rather
+-- than deleting this file.

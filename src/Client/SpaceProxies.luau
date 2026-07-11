@@ -8,7 +8,15 @@
 --
 -- Perspective is exact: proxy of size `baseScale * dist/d` at distance
 -- `dist = min(proxyDist, d)` looks like a real object of size baseScale at the
--- real position (d = camera→landmark distance).
+-- real position (d = camera→landmark distance). Apparent size is baseScale/d —
+-- INDEPENDENT of proxyDist. So proxyDist doesn't set how big a landmark looks; it
+-- sets its render DEPTH (for occlusion vs planets) and how close the camera sits to
+-- the geometry. Two consequences drive the per-landmark proxyDist in `constellation`:
+--   • Stars: pushed FAR (18000, beyond the universe render distance) so real planets
+--     draw IN FRONT of them instead of the proxy covering everything.
+--   • Black hole: kept CLOSE. Its accretion VFX are ParticleEmitters, and Roblox
+--     distance-culls particles a few thousand studs out — at 18000 they never render.
+--     It sits alone in the empty maw void (nothing to occlude it), so near is free.
 --
 -- Rings (the model's UnionOperations) are spun about THEIR OWN centre each frame,
 -- re-derived from the proxy's current position + scale — so the parallax move +

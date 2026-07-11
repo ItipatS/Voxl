@@ -26,6 +26,7 @@ local SFX_FADE = 6 -- boost-sound volume fade speed (per second) — fades out, 
 
 local M = {}
 local stamina = STAMINA_MAX -- this bar IS the "star fuel" — dust refills it (DustField)
+local depleted = false -- true once boost drains stamina to 0; locks boost until stamina refills FULLY
 local mult = 1
 local wasBoosting = false
 local curBoosting = false -- exposed for FlightStun (Hit vs Miss asteroid sound)
@@ -44,8 +45,8 @@ blink.PlayerStateSync.On(function(s)
 	serverFuel = s.fuel
 end)
 
--- Grant star fuel (collected from dust). Refuelling also lifts the deplete-lock once
--- there's a usable amount, so scooping dust lets you boost again without a full refill.
+-- Grant star fuel (collected from dust). Fuel just tops the bar; the deplete-lock only
+-- lifts once it's FULL again (checked in the boost loop) — a grant that fills it unlocks too.
 function M.addFuel(n: number)
 	stamina = math.min(STAMINA_MAX, stamina + n)
 end
@@ -172,10 +173,15 @@ local function moving(): boolean
 end
 
 RunService.RenderStepped:Connect(function(dt: number)
-	-- Boost gate: holding shift + moving + have fuel. Spamming with stamina is FINE; the SFX
-	-- (below) is what gets debounced, not the boost.
+	-- Boost gate: holding shift + moving + have fuel + NOT depleted. Once boost drains stamina
+	-- to 0 you're locked out until it refills FULLY (depleted stays true till stamina hits max) —
+	-- otherwise a hair of regen each frame lets you feather the boost forever. Spamming while you
+	-- still have fuel is FINE; the SFX (below) is what gets debounced, not the boost.
 	local now = os.clock()
-	local boosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and stamina > 0 and moving()
+	if depleted and stamina >= STAMINA_MAX then
+		depleted = false
+	end
+	local boosting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and not depleted and stamina > 0 and moving()
 	if boosting ~= wasBoosting then
 		wasBoosting = boosting
 		blink.BoostState.Fire(boosting) -- edge only (start/stop), so the server can sim fuel
@@ -186,6 +192,9 @@ RunService.RenderStepped:Connect(function(dt: number)
 	end
 	if boosting then
 		stamina = math.max(0, stamina - DRAIN * dt)
+		if stamina <= 0 then
+			depleted = true -- ran dry mid-boost → lock until a full refill
+		end
 		mult = BOOST_MULT
 	else
 		stamina = math.min(STAMINA_MAX, stamina + REGEN * dt)
@@ -201,8 +210,8 @@ RunService.RenderStepped:Connect(function(dt: number)
 
 	if fill then
 		fill.Size = UDim2.fromScale(frac, 1)
-		-- red the whole recharge while locked; blue once it's usable again
-		fill.BackgroundColor3 = if frac < 0.15 then Color3.fromRGB(235, 90, 90) else Color3.fromRGB(120, 200, 255)
+		-- red the whole recharge while depleted-locked; blue once it's boostable again
+		fill.BackgroundColor3 = if depleted then Color3.fromRGB(235, 90, 90) else Color3.fromRGB(120, 200, 255)
 	end
 	if bar then
 		bar.Enabled = boosting or frac < 0.999 -- show while boosting or refilling

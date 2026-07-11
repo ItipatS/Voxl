@@ -191,7 +191,7 @@ local function burst(root: BasePart, color: Color3)
 	if t - sfxLast > 0.08 then
 		sfxLast = t
 		local c = CollectSound:Clone()
-		c.Parent = root
+		c.Parent = SoundService -- on the player = reliable
 		c:Play()
 		Debris:AddItem(c, 2)
 	end

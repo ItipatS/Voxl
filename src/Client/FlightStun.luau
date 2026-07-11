@@ -70,13 +70,11 @@ local function playImpact()
 	if not eff then
 		return
 	end
-	-- Boosting into a rock = a heavy "Hit"; drifting or standing into one = a lighter "Miss".
-	local s = eff:FindFirstChild(if FlightBoost.boosting() then "Hit" else "Miss")
+	-- Boosting into a rock = a heavy "Hit"; drifting or standing into one = a lighter .
+	local s = eff:FindFirstChild(if FlightBoost.boosting() then "Hit" else "Mice")
 	if s and s:IsA("Sound") then
 		local c = s:Clone()
-		local char = player.Character
-		local root = char and char:FindFirstChild("HumanoidRootPart")
-		c.Parent = if root and root:IsA("BasePart") then root else SoundService -- on the player = reliable
+		c.Parent = SoundService -- on the player = reliable
 		c:Play()
 		Debris:AddItem(c, 3)
 	end

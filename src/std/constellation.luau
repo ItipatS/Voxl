@@ -54,12 +54,19 @@ M.VOID_RADIUS = M.BLACKHOLE.radius + 2000 -- 14000
 -- baseScale / distance, so distant stars read smaller — bump baseScale if too small.
 -- (Template names below are legacy biome-flavoured art; starter stars get proper
 -- fancy hub-town names + visuals in the naming pass — see DESIGN.md.)
--- proxyDist sets the DEPTH the proxy renders at (apparent size = baseScale/d, independent of
--- it). It must sit BEYOND the universe render distance (UniverseField ≈ 16000) so real planets
--- render IN FRONT of the landmark proxies instead of the proxies covering everything. [TUNE]
+-- proxyDist sets the render DEPTH of the proxy — NOT its apparent size (that's baseScale/d,
+-- independent of proxyDist). Two regimes, per landmark:
+--   • Stars: FAR (PROXY_DIST), beyond the universe render distance (UniverseField ≈ 16000), so
+--     real planets draw IN FRONT of them instead of the proxy covering everything. Stars have no
+--     particle VFX, so the distance costs nothing.
+--   • Black hole: CLOSE (proxyDist ≈ 100). Its accretion glow is ParticleEmitters, and Roblox
+--     distance-culls particles a few thousand studs out — at 18000 they never play. It sits alone
+--     in the maw void (VOID_RADIUS 14000 — nothing to occlude it), so rendering it near is free.
+--     Lower proxyDist if particles still cull; it does NOT change how big the maw looks — tune
+--     baseScale for that. [TUNE]
 local PROXY_DIST = 18000
 M.LANDMARKS = {
-	{ template = "BlackHole", pos = CENTER, baseScale = 20, proxyDist = PROXY_DIST },
+	{ template = "BlackHole", pos = CENTER, baseScale = 50, proxyDist = 100 },
 	{ template = "ForestStar", pos = STARTER_STARS[1], baseScale = 6, proxyDist = PROXY_DIST },
 	{ template = "DesertStar", pos = STARTER_STARS[2], baseScale = 6, proxyDist = PROXY_DIST },
 	{ template = "MountainStar", pos = STARTER_STARS[3], baseScale = 6, proxyDist = PROXY_DIST },
