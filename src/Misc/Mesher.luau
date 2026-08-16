@@ -85,16 +85,32 @@ local isOpaque = Blocks.isOpaque
 local TERRAIN_CASTS_SHADOW = true
 
 local MAGENTA = Color3.fromRGB(255, 0, 255)
+-- FANCY vs FAST leaves, and this is the single most expensive choice in the file.
+--
+-- A leaf block is alpha = 1: the part is invisible and the cutout texture is the
+-- whole block, so you can see through the gaps in a canopy. That look costs more
+-- than it appears to. TRANSPARENT geometry has to be depth-sorted back-to-front
+-- from the camera EVERY FRAME, on the main thread — it is not batched, not cached,
+-- and not skipped when nothing moves. Leaves are ~30% of the boxes on the imported
+-- map, so at render radius 8 that is ~30,000 parts re-sorted every frame, forever,
+-- standing perfectly still. That is a permanently pegged RenderViewUpdate with no
+-- script time under it, which is exactly what it looks like in a profile.
+--
+-- Fast leaves draw the same cutout texture on an OPAQUE part whose colour is the
+-- texture's own mean, so the holes read as more leaves instead of showing sky. The
+-- canopy looks slightly denser and the sort disappears completely. Minecraft has
+-- shipped this exact trade as a graphics setting for fifteen years.
+local FANCY_LEAVES = false
+
 local function applyBlockAppearance(part: BasePart, blockId: number, textured: boolean?)
     local d = BlockDefs[blockId]
     if d then
         part.Material = d.material
-        -- A leaf is a fully transparent part whose texture IS the block. Drop the
-        -- texture and it stops existing — so an untextured chunk draws it opaque in
-        -- the texture's own mean colour instead. Nothing else needs this: every
-        -- other block's colour already matches its texture.
-        local lod = if textured == false then d.lodColor else nil
-        if lod then
+        -- lodColor marks a block whose texture IS the block (leaves). It gets drawn
+        -- opaque in that colour whenever we can't afford the cutout: with no texture
+        -- at all (it would be invisible), or on fast leaves (it would cost a sort).
+        local lod = d.lodColor
+        if lod and (textured == false or not FANCY_LEAVES) then
             part.Color = lod
             part.Transparency = 0
         else
@@ -510,6 +526,16 @@ local ChunkMesher = {}
 -- in one frame".
 function ChunkMesher.InstancesBuilt(): number
     return instancesBuilt
+end
+
+-- See FANCY_LEAVES. Takes effect on chunks built after this call, so the caller
+-- rebuilds what is already standing.
+function ChunkMesher.SetFancyLeaves(on: boolean)
+    FANCY_LEAVES = on
+end
+
+function ChunkMesher.FancyLeaves(): boolean
+    return FANCY_LEAVES
 end
 
 -- `textured` (default true) decides whether this chunk gets per-face Texture

@@ -18,7 +18,7 @@ local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 local chunkcount:number = 0
 
 local MeshedChunks = {}   -- key -> greedy Model (untouched chunks)
-local MeshedTextured: { [string]: boolean } = {} -- key -> was it built textured?
+local MeshedStyle: { [string]: number } = {} -- key -> visual style it was built with
 local BlockChunks: { [string]: any } = {} -- key -> per-cell BlockChunk (edited chunks)
 
 -- RENDER RADIUS, in chunks. 8 = 17x17 = 289 chunks, ~351 boxes each, so roughly
@@ -186,7 +186,7 @@ blink.UnloadChunks.On(function(payloads)
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
         end
-        MeshedTextured[key] = nil
+        MeshedStyle[key] = nil
         local bc = BlockChunks[key]
         if bc then
             ChunkMesher.RecycleBlockChunk(bc)
@@ -216,7 +216,7 @@ local function ensureBlockMode(cx: number, cz: number): ChunkMesher.BlockChunk?
     if greedy then
         ChunkMesher.RecycleChunkModel(greedy)
         MeshedChunks[key] = nil
-        MeshedTextured[key] = nil
+        MeshedStyle[key] = nil
     end
     bc = ChunkMesher.BuildBlockChunk(ClientWorld[key], Chunks)
     BlockChunks[key] = bc
@@ -268,7 +268,7 @@ blink.SyncDiff.On(function(list)
         if m then
             ChunkMesher.RecycleChunkModel(m)
             MeshedChunks[key] = nil -- RenderStepped rebuilds it diff-aware
-            MeshedTextured[key] = nil
+            MeshedStyle[key] = nil
         end
     end
 end)
@@ -306,7 +306,7 @@ local function unloadFarChunks(pcx: number, pcz: number)
         if distToPlayer(key, pcx, pcz) > unloadRadius() then
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
-            MeshedTextured[key] = nil
+            MeshedStyle[key] = nil
         end
     end
     for key, bc in pairs(BlockChunks) do
@@ -328,32 +328,41 @@ local function demoteFarBlockChunks(pcx: number, pcz: number)
             BlockChunks[key] = nil
             local chunk = ClientWorld[key]
             if chunk then
-                local tex = d <= textureRadius
-                MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks, tex)
-                MeshedTextured[key] = tex
+                MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks, d <= textureRadius)
+                MeshedStyle[key] = styleFor(d)
             end
             return -- at most one demotion per frame
         end
     end
 end
 
--- Rebuild chunks whose texture tier no longer matches their distance. Walking away
--- drops a chunk to flat colour, walking back restores it. One per frame, like
--- demotion: a rebuild dirties the renderer's batches, so doing a ring of them in a
--- single frame is exactly the spike this whole change exists to avoid.
-local function retextureChunks(pcx: number, pcz: number)
+-- The visual style a chunk was BUILT with, as one number, so any style change can
+-- find the chunks that are out of date. Bit 1 = textured, bit 2 = fancy leaves.
+local function styleFor(d: number): number
+    local s = if d <= textureRadius then 1 else 0
+    if ChunkMesher.FancyLeaves() then
+        s += 2
+    end
+    return s
+end
+
+-- Rebuild chunks whose style no longer matches. Walking away from a chunk can drop
+-- it to flat colour, and toggling leaves restyles everything. One per frame, like
+-- the block-mode demotion: a rebuild dirties the renderer's batches, so doing a
+-- ring of them in a single frame is the spike all of this exists to avoid.
+local function restyleChunks(pcx: number, pcz: number)
     for key, model in pairs(MeshedChunks) do
         local d = distToPlayer(key, pcx, pcz)
-        local want = d <= textureRadius
-        if d <= unloadRadius() and MeshedTextured[key] ~= want then
+        local want = styleFor(d)
+        if d <= unloadRadius() and MeshedStyle[key] ~= want then
             local chunk = ClientWorld[key]
             if not chunk then
-                MeshedTextured[key] = want -- nothing to rebuild from; stop retrying
+                MeshedStyle[key] = want -- nothing to rebuild from; stop retrying
                 return
             end
             ChunkMesher.RecycleChunkModel(model)
-            MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks, want)
-            MeshedTextured[key] = want
+            MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks, d <= textureRadius)
+            MeshedStyle[key] = want
             return
         end
     end
@@ -383,10 +392,17 @@ RunService.RenderStepped:Connect(function()
     if type(attr) == "number" and attr >= 1 then
         instanceBudget = attr
     end
+    -- FancyLeaves is the one that decides whether ~30,000 transparent parts get
+    -- depth-sorted every frame. Standing still does not make that go away, which is
+    -- what a permanently busy RenderViewUpdate with no script time under it means.
+    attr = Workspace:GetAttribute("FancyLeaves")
+    if type(attr) == "boolean" and attr ~= ChunkMesher.FancyLeaves() then
+        ChunkMesher.SetFancyLeaves(attr)
+    end
 
     unloadFarChunks(pcx, pcz)
     demoteFarBlockChunks(pcx, pcz)
-    retextureChunks(pcx, pcz)
+    restyleChunks(pcx, pcz)
 
     -- Collect chunks the server has told us to load but that aren't meshed yet,
     -- tagged by squared distance to the player. Faces at chunk boundaries are
@@ -443,9 +459,9 @@ RunService.RenderStepped:Connect(function()
         -- malformed chunk would stop all meshing permanently, which reads exactly
         -- like "it renders a few chunks near spawn and then stops forever".
         local ok, err = pcall(function()
-            local tex = distToPlayer(c.key, pcx, pcz) <= textureRadius
-            MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks, tex)
-            MeshedTextured[c.key] = tex
+            local d = distToPlayer(c.key, pcx, pcz)
+            MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks, d <= textureRadius)
+            MeshedStyle[c.key] = styleFor(d)
             meshRunChunks += 1
         end)
         if not ok then
