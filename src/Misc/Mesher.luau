@@ -76,12 +76,22 @@ local isOpaque = Blocks.isOpaque
 local TERRAIN_CASTS_SHADOW = false
 
 local MAGENTA = Color3.fromRGB(255, 0, 255)
-local function applyBlockAppearance(part: BasePart, blockId: number)
+local function applyBlockAppearance(part: BasePart, blockId: number, textured: boolean?)
     local d = BlockDefs[blockId]
     if d then
         part.Material = d.material
-        part.Color = d.color
-        part.Transparency = d.alpha or 0
+        -- A leaf is a fully transparent part whose texture IS the block. Drop the
+        -- texture and it stops existing — so an untextured chunk draws it opaque in
+        -- the texture's own mean colour instead. Nothing else needs this: every
+        -- other block's colour already matches its texture.
+        local lod = if textured == false then d.lodColor else nil
+        if lod then
+            part.Color = lod
+            part.Transparency = 0
+        else
+            part.Color = d.color
+            part.Transparency = d.alpha or 0
+        end
         -- Non-solid blocks (water, lava) are swum through, and must not eat the
         -- raycast that block editing / the block preview fire at the world.
         local solid = d.solid ~= false
@@ -504,7 +514,7 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance, textured: 
         local part = getPooledPart()
         part.Size = size
         part.CFrame = CFrame.new(center)
-        applyBlockAppearance(part, id)
+        applyBlockAppearance(part, id, textured)
         part.CastShadow = TERRAIN_CASTS_SHADOW and ePY
         part.Parent = model
 
