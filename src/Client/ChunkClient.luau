@@ -21,8 +21,19 @@ local MeshedChunks = {}   -- key -> greedy Model (untouched chunks)
 local MeshedTextured: { [string]: boolean } = {} -- key -> was it built textured?
 local BlockChunks: { [string]: any } = {} -- key -> per-cell BlockChunk (edited chunks)
 
-local NEAR_RADIUS = 8            -- render radius (chunks)
-local UNLOAD_RADIUS = NEAR_RADIUS + 4
+-- RENDER RADIUS, in chunks. This is the one number that moves the renderer's
+-- `Scene` cost, because frustum culling happens AFTER the scene update: the engine
+-- walks every part that exists inside this radius whether you are looking at it or
+-- not. At 8 that is 17x17 = 289 chunks, ~351 boxes each — about 101,000 parts alive
+-- at all times, cliffs behind you included.
+--
+-- Live-tunable for profiling, no rebuild needed:
+--   Workspace:SetAttribute("RenderRadius", 5)
+local NEAR_RADIUS = 8
+local nearRadius = NEAR_RADIUS
+local function unloadRadius(): number
+    return nearRadius + 4
+end
 -- Edited chunks go per-cell ("block mode") for instant editing, which costs many
 -- more parts. You can only edit within reach (~1 chunk), so once a block-mode
 -- chunk is this many chunks away it's demoted back to the cheap greedy mesh (it's
@@ -260,14 +271,14 @@ end
 
 local function unloadFarChunks(pcx: number, pcz: number)
     for key, model in pairs(MeshedChunks) do
-        if distToPlayer(key, pcx, pcz) > UNLOAD_RADIUS then
+        if distToPlayer(key, pcx, pcz) > unloadRadius() then
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
             MeshedTextured[key] = nil
         end
     end
     for key, bc in pairs(BlockChunks) do
-        if distToPlayer(key, pcx, pcz) > UNLOAD_RADIUS then
+        if distToPlayer(key, pcx, pcz) > unloadRadius() then
             ChunkMesher.RecycleBlockChunk(bc)
             BlockChunks[key] = nil
         end
@@ -280,7 +291,7 @@ end
 local function demoteFarBlockChunks(pcx: number, pcz: number)
     for key, bc in pairs(BlockChunks) do
         local d = distToPlayer(key, pcx, pcz)
-        if d > ACTIVE_EDIT_RADIUS and d <= UNLOAD_RADIUS then
+        if d > ACTIVE_EDIT_RADIUS and d <= unloadRadius() then
             ChunkMesher.RecycleBlockChunk(bc)
             BlockChunks[key] = nil
             local chunk = ClientWorld[key]
@@ -302,7 +313,7 @@ local function retextureChunks(pcx: number, pcz: number)
     for key, model in pairs(MeshedChunks) do
         local d = distToPlayer(key, pcx, pcz)
         local want = d <= textureRadius
-        if d <= UNLOAD_RADIUS and MeshedTextured[key] ~= want then
+        if d <= unloadRadius() and MeshedTextured[key] ~= want then
             local chunk = ClientWorld[key]
             if not chunk then
                 MeshedTextured[key] = want -- nothing to rebuild from; stop retrying
@@ -337,8 +348,8 @@ RunService.RenderStepped:Connect(function()
     -- tagged by squared distance to the player. Faces at chunk boundaries are
     -- generated deterministically, so no neighbor data is needed (no seams).
     table.clear(candidates)
-    for dz = -NEAR_RADIUS, NEAR_RADIUS do
-        for dx = -NEAR_RADIUS, NEAR_RADIUS do
+    for dz = -nearRadius, nearRadius do
+        for dx = -nearRadius, nearRadius do
             local key = chunkKey(pcx + dx, pcz + dz)
             if ClientWorld[key] and not MeshedChunks[key] and not BlockChunks[key]
                 and neighboursKnown(pcx + dx, pcz + dz) then
