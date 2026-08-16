@@ -34,6 +34,15 @@ local function chunkKey(cx: number, cz: number): string
     return tostring(cx) .. ":" .. tostring(cz)
 end
 
+-- Instances handed to the engine since load, so a caller can budget how much NEW
+-- GEOMETRY it creates in one frame. See ChunkMesher.InstancesBuilt below.
+--
+-- It counts INSTANCES, not boxes, and that distinction is the whole point: a
+-- textured box is a part plus up to six Texture children, so budgeting by box
+-- silently costs ~4x more when textures are on than when they are off — and the
+-- budget would appear to be doing its job the entire time.
+local instancesBuilt = 0
+
 -- ========== part pool ==========
 local PartPool: { BasePart } = {}
 
@@ -65,7 +74,7 @@ local isOpaque = Blocks.isOpaque
 --
 -- It was turned off chasing a frame-time problem shadows had nothing to do with:
 -- the real cause was the mesher handing the engine ~35,000 new parts in a single
--- frame (see PART_BUDGET in ChunkClient). With that fixed, shadows cost what they
+-- frame (see INSTANCE_BUDGET in ChunkClient). With that fixed, shadows cost what they
 -- always cost, and turning them off bought nothing while losing the thing that
 -- makes a cliff read as a cliff.
 --
@@ -144,6 +153,7 @@ local function addFace(part: BasePart, face: Enum.NormalId, image: string, tint:
     t.Face = face
     t.Color3 = tint or Color3.new(1, 1, 1)
     t.Parent = part
+    instancesBuilt += 1
 end
 
 -- ========== 3D greedy on the generated surface shell ==========
@@ -488,19 +498,18 @@ end
 -- ========== PUBLIC API ==========
 local ChunkMesher = {}
 
--- Parts created since load, so a caller can budget how much NEW GEOMETRY it hands
--- the engine in one frame.
+-- Instances (parts AND their Textures) handed to the engine since load.
 --
--- This exists because a time budget around the mesher measures the wrong thing.
--- Meshing a cheap chunk costs ~0.05 ms of Luau, so a 5 ms script budget will
--- happily build a hundred of them in one frame — and then the engine has to ingest
--- ~35,000 new parts, which it does inside RenderViewUpdate, on the main thread,
--- where no script timer can see it. The symptom is a profile with a 50 ms
--- RenderViewUpdate and no Lua time anywhere, which reads as "rendering is slow"
--- when it is really "we shoved a world at it in one frame".
-local partsBuilt = 0
-function ChunkMesher.PartsBuilt(): number
-    return partsBuilt
+-- A caller budgets against this because a TIME budget around the mesher measures
+-- the wrong thing entirely. Meshing a cheap chunk costs ~0.05 ms of Luau, so a 5 ms
+-- script budget happily builds a hundred of them in one frame — and then the engine
+-- has to ingest tens of thousands of new instances, which it does inside
+-- RenderViewUpdate, on the main thread, where no script timer can see it. The
+-- symptom is a profile with a 50 ms RenderViewUpdate and no Lua time anywhere,
+-- which reads as "the renderer is slow" when it is really "we shoved a world at it
+-- in one frame".
+function ChunkMesher.InstancesBuilt(): number
+    return instancesBuilt
 end
 
 -- `textured` (default true) decides whether this chunk gets per-face Texture
@@ -532,7 +541,7 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance, textured: 
         applyBlockAppearance(part, id, textured)
         part.CastShadow = TERRAIN_CASTS_SHADOW
         part.Parent = model
-        partsBuilt += 1
+        instancesBuilt += 1
 
         local tex = if textured then BlockTextures[id] else nil
         if tex then
@@ -792,7 +801,7 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
                         part.CastShadow = TERRAIN_CASTS_SHADOW
                         applyCellFaces(part, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
                         part.Parent = model
-                        partsBuilt += 1
+                        instancesBuilt += 1
                         cells[cellKey(wx, y, wz)] = part
                     end
                 end

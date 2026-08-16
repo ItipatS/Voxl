@@ -47,7 +47,7 @@ local ACTIVE_EDIT_RADIUS = 3
 -- with a Texture child is excluded from batching entirely).
 --
 -- OFF by default. It was added chasing a frame-time problem it did not cause — the
--- real one was PART_BUDGET below — and it costs real visual quality, so it is not
+-- real one was INSTANCE_BUDGET below — and it costs real visual quality, so it is not
 -- something to pay for by default. It stays because it is the right knob for a weak
 -- client: the fallback is close to free visually, since tint.js normalises every
 -- generated texture so its mean colour equals the block's declared colour.
@@ -69,17 +69,28 @@ local MAX_CHUNK_PER_FRAME = 128 -- effectively "as many cheap chunks as fit"
 -- actually matters.
 --
 -- Meshing a cheap chunk is ~0.05 ms of Luau, so the 5 ms above would build ~100 of
--- them in one frame and hand the engine ~35,000 new parts at once. Ingesting new
--- geometry happens inside RenderViewUpdate, on the main thread, and no script timer
--- can see it — so the profile shows a 50 ms RenderViewUpdate with no Lua time
--- anywhere and looks like "the renderer is slow", when what actually happened is
--- that we dumped a world into it in a single frame. While you keep moving, new
--- chunks keep arriving and it never gets a quiet frame to catch up.
+-- them in one frame and hand the engine tens of thousands of new instances at once.
+-- Ingesting new geometry happens inside RenderViewUpdate, on the main thread, and
+-- no script timer can see it — so the profile shows a 50 ms RenderViewUpdate with
+-- no Lua time anywhere and looks like "the renderer is slow", when what actually
+-- happened is that we dumped a world into it in a single frame. While you keep
+-- moving, new chunks keep arriving and it never gets a quiet frame to catch up.
 --
--- So cap NEW PARTS per frame, not milliseconds. ~1500 is roughly four average
--- chunks, or two of the 800-box cliff chunks.
-local PART_BUDGET = 1500
-local partBudget = PART_BUDGET
+-- So cap NEW INSTANCES per frame, not milliseconds — and instances, not boxes.
+-- A textured box is a part plus up to six Texture children, so a box budget quietly
+-- costs ~4x more with textures on than with them off: the first version of this was
+-- tuned with textures and shadows disabled, and turning them back on walked
+-- straight through it while the budget still looked like it was working.
+--
+-- ~1500 instances is roughly one average textured chunk per frame, or four of them
+-- untextured. It self-corrects when TextureRadius changes, which is the point.
+local INSTANCE_BUDGET = 1500
+local instanceBudget = INSTANCE_BUDGET
+
+-- Stats for the current run of meshing, reported when the queue drains.
+local meshRunStarted: number? = nil
+local meshRunInstances = 0
+local meshRunChunks = 0
 
 -- A chunk is just a coordinate now: the client generates its terrain from the
 -- deterministic WorldGen, so no block data is stored or transferred.
@@ -358,7 +369,7 @@ RunService.RenderStepped:Connect(function()
 
     -- Live knobs, so all three can be A/B'd against the MicroProfiler in one
     -- session without a rebuild. Each moves a different bar: TextureRadius ->
-    -- DefaultPass (batching), RenderRadius -> Scene (parts alive), PartBudget ->
+    -- DefaultPass (batching), RenderRadius -> Scene (parts alive), MeshBudget ->
     -- RenderViewUpdate while moving (new geometry per frame).
     local attr = Workspace:GetAttribute("TextureRadius")
     if type(attr) == "number" then
@@ -368,9 +379,9 @@ RunService.RenderStepped:Connect(function()
     if type(attr) == "number" and attr >= 1 then
         nearRadius = attr
     end
-    attr = Workspace:GetAttribute("PartBudget")
+    attr = Workspace:GetAttribute("MeshBudget")
     if type(attr) == "number" and attr >= 1 then
-        partBudget = attr
+        instanceBudget = attr
     end
 
     unloadFarChunks(pcx, pcz)
@@ -390,8 +401,27 @@ RunService.RenderStepped:Connect(function()
             end
         end
     end
+    -- Report each time the queue drains. This is the number that says whether the
+    -- budget is set right: the frame should stay smooth WHILE this runs, and the
+    -- CPU should go quiet the moment it finishes. A load that never finishes, or
+    -- one that finishes but leaves the frame pegged, are different problems and
+    -- this is what tells them apart.
     if #candidates == 0 then
+        if meshRunStarted then
+            local secs = os.clock() - meshRunStarted
+            local built = ChunkMesher.InstancesBuilt() - meshRunInstances
+            print(`[ChunkClient] meshed {meshRunChunks} chunks / {built} instances in `
+                .. `{string.format("%.1f", secs)}s ({math.round(built / math.max(secs, 0.001))}/s) `
+                .. `— queue empty, meshing should now be idle`)
+            meshRunStarted = nil
+            meshRunChunks = 0
+        end
         return
+    end
+    if not meshRunStarted then
+        meshRunStarted = os.clock()
+        meshRunInstances = ChunkMesher.InstancesBuilt()
+        meshRunChunks = 0
     end
 
     -- Nearest-first: the chunk under (and closest ahead of) the player builds
@@ -401,11 +431,11 @@ RunService.RenderStepped:Connect(function()
     end)
 
     -- Mesh within a budget so a run of expensive (tall) chunks can't spike the
-    -- frame; the closest one always builds (at least 1 per frame). The PART budget
-    -- is the one that binds — see PART_BUDGET — and the time budget stays as a
+    -- frame; the closest one always builds (at least 1 per frame). The INSTANCE budget
+    -- is the one that binds — see INSTANCE_BUDGET — and the time budget stays as a
     -- second guard for a chunk that is slow to mesh without being large.
     local deadline = os.clock() + MESH_TIME_BUDGET
-    local partsAtStart = ChunkMesher.PartsBuilt()
+    local builtAtStart = ChunkMesher.InstancesBuilt()
     for n = 1, math.min(#candidates, MAX_CHUNK_PER_FRAME) do
         local c = candidates[n]
         -- One bad chunk must not take the renderer with it. This runs inside a
@@ -416,6 +446,7 @@ RunService.RenderStepped:Connect(function()
             local tex = distToPlayer(c.key, pcx, pcz) <= textureRadius
             MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks, tex)
             MeshedTextured[c.key] = tex
+            meshRunChunks += 1
         end)
         if not ok then
             failedChunks[c.key] = true
@@ -425,7 +456,7 @@ RunService.RenderStepped:Connect(function()
                 warn(`[ChunkClient] chunk {c.key} failed to mesh: {err}`)
             end
         end
-        if ChunkMesher.PartsBuilt() - partsAtStart >= partBudget or os.clock() >= deadline then
+        if ChunkMesher.InstancesBuilt() - builtAtStart >= instanceBudget or os.clock() >= deadline then
             break
         end
     end
