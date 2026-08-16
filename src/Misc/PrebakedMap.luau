@@ -265,11 +265,20 @@ end
 -- A bounded cache of decoded chunks. Decoding is cheap enough that a hard reset
 -- beats tracking recency; the cap is set well above what a render radius needs, so
 -- it effectively never fires during normal play.
-local function newCache()
+-- Only the SERVER may evict. Its chunks are a cache in front of the blob, so a
+-- discarded one is re-decoded on the next query and nothing is lost.
+--
+-- The CLIENT's are not a cache — they are the only copy of terrain it will ever
+-- receive, because nothing re-requests a chunk. Evicting there deletes the world:
+-- with the server streaming 625 chunks and the cap at 600, the client was throwing
+-- away almost everything it had been sent, which showed up as a map full of holes
+-- and a spawn column that turned to void once the wipe reached it. The client's
+-- bound is UnloadChunks calling drop(), which is driven by where the player is.
+local function newCache(evictable: boolean)
     local map: { [number]: Chunk } = {}
     local n = 0
     return map, function()
-        if n >= MAX_CACHED_CHUNKS then
+        if evictable and n >= MAX_CACHED_CHUNKS then
             table.clear(map)
             n = 0
         end
@@ -320,7 +329,7 @@ function PrebakedMap.open(src: Source): Map
         return decodeRange(src, recordsBase + u32at(index, at), comp), u16at(index, at + 8)
     end
 
-    local cache, touch = newCache()
+    local cache, touch = newCache(true) -- server: re-decodable from the blob
     local function fetch(cx: number, cz: number): Chunk?
         local at = slot(cx, cz)
         if not at then
@@ -346,7 +355,7 @@ end
 
 -- ===== CLIENT: chunks arrive as the player walks =====
 function PrebakedMap.receiver(meta: Meta): Map
-    local cache, touch = newCache()
+    local cache, touch = newCache(false) -- client: this IS the terrain, never evict
 
     local function key(cx: number, cz: number): number
         -- meta.nx is the grid width, so this is unique across the whole map

@@ -2,13 +2,15 @@
 -- Star place: a FLY toggle (default F).
 --
 -- Walking a 896-block imported map is not a way to inspect it, and falling off it
--- is a death — so this is the survey tool. It is deliberately NOT the lobby's
--- FlightController: that is a jet with its own animation state machine and no
--- gravity anywhere, whereas this is ordinary walking with a toggle that lifts you
--- out of it and hands the ground back when you switch off.
+-- is a death — so this is the survey tool.
 --
--- Speed matches the walk speed so distances still read honestly; hold shift to
--- move faster when crossing the map.
+-- The flight itself is the LOBBY'S, copied from FlightController: PlatformStand +
+-- AutoRotate off, a LinearVelocity for travel and an AlignOrientation for facing,
+-- with the velocity lerped so it eases in and out. Same feel, same controls, same
+-- code shape — there is no reason for a second way of flying to exist. What differs
+-- is only what a star needs: it TOGGLES (the lobby is always flying), it hands
+-- gravity and walking back when you switch off, and it runs at a walking-scale
+-- speed so distances still read honestly.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -18,117 +20,185 @@ local Workspace = game:GetService("Workspace")
 local player = Players.LocalPlayer
 
 local TOGGLE_KEY = Enum.KeyCode.F
-local SPEED = 60 -- studs/s (~17 blocks/s: fast enough to cross, slow enough to look)
+local SPEED = 60 -- studs/s ≈ 17 blocks/s: crosses the map, still reads as a place
 local BOOST = 4 -- shift multiplier
-local RISE_KEY = Enum.KeyCode.Space
-local FALL_KEY = Enum.KeyCode.LeftControl
+local ACCEL = 6 -- velocity lerp rate, as in FlightController
 
-local flying = false
-local mover: LinearVelocity? = nil
-local attachment: Attachment? = nil
-
-local function humanoidOf(): (Humanoid?, BasePart?)
-	local char = player.Character
-	if not char then
-		return nil, nil
+-- Typing in the inventory shouldn't fly you across the island. The UI framework
+-- owns that answer; if it isn't up yet, assume not blocked.
+local UIController: any = nil
+task.spawn(function()
+	local ok, mod = pcall(function()
+		return require(script.Parent:WaitForChild("UI"):WaitForChild("UIController")) :: any
+	end)
+	if ok then
+		UIController = mod
 	end
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	local root = char:FindFirstChild("HumanoidRootPart")
-	return hum, (if root and root:IsA("BasePart") then root else nil)
+end)
+local function blocked(): boolean
+	return UIController ~= nil and UIController.gameplayBlocked and UIController.gameplayBlocked()
 end
 
+type Rig = {
+	humanoid: Humanoid,
+	hrp: BasePart,
+	att: Attachment,
+	lv: LinearVelocity,
+	ao: AlignOrientation,
+	walkSpeed: number,
+	jumpHeight: number,
+	animate: LocalScript?,
+}
+
+local rig: Rig? = nil
+local targetVel = Vector3.zero
+
 local function stopFlying()
-	flying = false
-	if mover then
-		mover:Destroy()
-		mover = nil
+	local r = rig
+	rig = nil
+	targetVel = Vector3.zero
+	if not r then
+		return
 	end
-	if attachment then
-		attachment:Destroy()
-		attachment = nil
+	-- The movers are parented to the ROOT, not the attachment, so destroy each.
+	if r.lv.Parent then
+		r.lv:Destroy()
 	end
-	local hum = humanoidOf()
-	if hum then
-		hum.PlatformStand = false
+	if r.ao.Parent then
+		r.ao:Destroy()
+	end
+	if r.att.Parent then
+		r.att:Destroy()
+	end
+	if r.humanoid.Parent then
+		r.humanoid.PlatformStand = false
+		r.humanoid.AutoRotate = true
+		r.humanoid.WalkSpeed = r.walkSpeed
+		r.humanoid.JumpHeight = r.jumpHeight
+	end
+	if r.animate then
+		r.animate.Disabled = false
 	end
 end
 
 local function startFlying()
-	local hum, root = humanoidOf()
-	if not hum or not root then
+	local char = player.Character
+	if not char then
 		return
 	end
-	flying = true
-	-- PlatformStand rather than changing the humanoid state: it suspends walking and
-	-- the fall/landing animations without fighting the state machine every frame.
-	hum.PlatformStand = true
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not (hrp and hrp:IsA("BasePart") and humanoid) then
+		return
+	end
 
-	local a = Instance.new("Attachment")
-	a.Parent = root
-	attachment = a
+	-- Remember what walking was, so switching off restores the server's tuning
+	-- rather than a guess.
+	local walkSpeed = humanoid.WalkSpeed
+	local jumpHeight = humanoid.JumpHeight
+
+	local animate = char:FindFirstChild("Animate")
+	if animate and animate:IsA("LocalScript") then
+		animate.Disabled = true
+	end
+
+	humanoid.PlatformStand = true
+	humanoid.AutoRotate = false
+	humanoid.WalkSpeed = 0
+	humanoid.JumpHeight = 0
+
+	local att = Instance.new("Attachment")
+	att.Name = "StarFlyAtt"
+	att.Parent = hrp
 
 	local lv = Instance.new("LinearVelocity")
-	lv.Attachment0 = a
-	lv.MaxForce = math.huge
+	lv.Attachment0 = att
 	lv.RelativeTo = Enum.ActuatorRelativeTo.World
+	lv.MaxForce = math.huge
 	lv.VectorVelocity = Vector3.zero
-	lv.Parent = root
-	mover = lv
+	lv.Parent = hrp
+
+	local ao = Instance.new("AlignOrientation")
+	ao.Attachment0 = att
+	ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
+	ao.RigidityEnabled = false
+	ao.Responsiveness = 30
+	ao.MaxTorque = math.huge
+	ao.CFrame = hrp.CFrame
+	ao.Parent = hrp
+
+	targetVel = Vector3.zero
+	rig = {
+		humanoid = humanoid,
+		hrp = hrp,
+		att = att,
+		lv = lv,
+		ao = ao,
+		walkSpeed = walkSpeed,
+		jumpHeight = jumpHeight,
+		animate = if animate and animate:IsA("LocalScript") then animate else nil,
+	}
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed or input.KeyCode ~= TOGGLE_KEY then
+	if processed or input.KeyCode ~= TOGGLE_KEY or blocked() then
 		return
 	end
-	if flying then
+	if rig then
 		stopFlying()
 	else
 		startFlying()
 	end
 end)
 
--- A new character (respawn) never inherits the flight.
+-- A respawn is a fresh character: drop the old rig rather than driving a corpse.
 player.CharacterAdded:Connect(function()
-	flying = false
-	mover = nil
-	attachment = nil
+	rig = nil
+	targetVel = Vector3.zero
 end)
 
-RunService.RenderStepped:Connect(function()
-	if not flying then
+RunService.RenderStepped:Connect(function(dt: number)
+	local r = rig
+	if not r then
 		return
 	end
-	local lv = mover
-	local hum, root = humanoidOf()
-	if not lv or not lv.Parent or not hum or not root then
-		if flying then
-			stopFlying()
-		end
+	if not (r.hrp.Parent and r.humanoid.Parent and r.lv.Parent) then
+		stopFlying()
 		return
 	end
-
 	local cam = Workspace.CurrentCamera
 	if not cam then
 		return
 	end
-	local look = cam.CFrame.LookVector
-	local right = cam.CFrame.RightVector
+	local camCF = cam.CFrame
 
-	local dir = Vector3.zero
-	if UserInputService:IsKeyDown(Enum.KeyCode.W) then dir += look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.S) then dir -= look end
-	if UserInputService:IsKeyDown(Enum.KeyCode.D) then dir += right end
-	if UserInputService:IsKeyDown(Enum.KeyCode.A) then dir -= right end
-	if UserInputService:IsKeyDown(RISE_KEY) then dir += Vector3.yAxis end
-	if UserInputService:IsKeyDown(FALL_KEY) then dir -= Vector3.yAxis end
+	local off = blocked()
+	local down = UserInputService.IsKeyDown
+	local fwd = if off then 0 else (down(UserInputService, Enum.KeyCode.W) and 1 or 0)
+		- (down(UserInputService, Enum.KeyCode.S) and 1 or 0)
+	local strafe = if off then 0 else (down(UserInputService, Enum.KeyCode.D) and 1 or 0)
+		- (down(UserInputService, Enum.KeyCode.A) and 1 or 0)
+	local vert = if off then 0 else (down(UserInputService, Enum.KeyCode.Space) and 1 or 0)
+		- (down(UserInputService, Enum.KeyCode.LeftControl) and 1 or 0)
+
+	local dir = camCF.LookVector * fwd + camCF.RightVector * strafe + Vector3.yAxis * vert
+	local moving = dir.Magnitude > 0.05
+	if moving then
+		dir = dir.Unit
+	end
 
 	local speed = SPEED
-	if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+	if not off and down(UserInputService, Enum.KeyCode.LeftShift) then
 		speed *= BOOST
 	end
-	lv.VectorVelocity = if dir.Magnitude > 0 then dir.Unit * speed else Vector3.zero
-end)
+	local want = if moving then dir * speed else Vector3.zero
+	targetVel = targetVel:Lerp(want, math.clamp(ACCEL * dt, 0, 1))
+	r.lv.VectorVelocity = targetVel
 
-print(`[StarFly] press {TOGGLE_KEY.Name} to fly (space/ctrl up-down, shift to boost)`)
+	local pos = r.hrp.Position
+	if moving then
+		r.ao.CFrame = CFrame.lookAt(pos, pos + dir, camCF.UpVector)
+	end
+end)
 
 return {}
