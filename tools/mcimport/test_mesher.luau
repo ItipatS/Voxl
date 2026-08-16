@@ -199,14 +199,18 @@ local function auditRealMap()
 
 	local byId: { [number]: number } = {}
 	local casters = 0
+	local faces = 0
 	local boxes, chunks, worst, worstKey = 0, 0, 0, ""
 	for cz = -3, 3 do
 		for cx = -3, 3 do
 			local n = 0
-			RealMesher._runGreedy3D({ cx = cx, cz = cz }, function(id, _size, _c, _px, _nx, ePY)
+			RealMesher._runGreedy3D({ cx = cx, cz = cz }, function(id, _size, _c, ePX, eNX, ePY, eNY, ePZ, eNZ)
 				n += 1
 				byId[id] = (byId[id] or 0) + 1
 				if ePY then casters += 1 end
+				for _, e in { ePX, eNX, ePY, eNY, ePZ, eNZ } do
+					if e then faces += 1 end
+				end
 			end)
 			if n > 0 then
 				chunks += 1
@@ -222,6 +226,11 @@ local function auditRealMap()
 		-- Why terrain shadows are off entirely rather than filtered: this is the best
 		-- the sky-facing rule can do, and it is not close to enough.
 		print(`  sky-facing: {casters} of {boxes} ({math.round(casters / boxes * 100)}%) — the ceiling for TERRAIN_CASTS_SHADOW`)
+		-- Every exposed face of a textured block becomes its own Texture instance,
+		-- and the engine walks instances on the MAIN THREAD every frame. This, not
+		-- the triangle count, is what a part-per-box renderer actually costs.
+		print(`  exposed faces: {faces} -> up to {faces} Texture instances`)
+		print(`  render instances per chunk: ~{math.round((boxes + faces) / chunks)} (parts + textures)`)
 		local names = {}
 		for n, id in BLOCKS.ID do
 			names[id] = n

@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local Workspace = game:GetService("Workspace")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
 
@@ -17,6 +18,7 @@ local WORLD_HEIGHT = WorldGen.WORLD_HEIGHT
 local chunkcount:number = 0
 
 local MeshedChunks = {}   -- key -> greedy Model (untouched chunks)
+local MeshedTextured: { [string]: boolean } = {} -- key -> was it built textured?
 local BlockChunks: { [string]: any } = {} -- key -> per-cell BlockChunk (edited chunks)
 
 local NEAR_RADIUS = 8            -- render radius (chunks)
@@ -26,6 +28,18 @@ local UNLOAD_RADIUS = NEAR_RADIUS + 4
 -- chunk is this many chunks away it's demoted back to the cheap greedy mesh (it's
 -- all client-side; the greedy build is diff-aware so it still shows your edits).
 local ACTIVE_EDIT_RADIUS = 3
+-- TEXTURE LOD. Chunks this close carry per-face Texture objects; past it they are
+-- flat block colour. This is the single biggest lever we have on frame time: a part
+-- with a Texture child cannot be batched by the renderer, so every textured box is
+-- its own batch AND its own pile of instances for the main thread to walk. Beyond a
+-- few chunks the texture is sub-pixel anyway, and the colours were generated to
+-- match the textures' mean, so the seam is very hard to see.
+--
+-- Live-tunable while profiling, no rebuild needed:
+--   Workspace:SetAttribute("TextureRadius", 0)   -- everything flat: the A/B
+--   Workspace:SetAttribute("TextureRadius", 99)  -- everything textured: the before
+local TEXTURE_RADIUS = 3
+local textureRadius = TEXTURE_RADIUS
 -- Per-frame meshing is bounded by TIME, not a fixed count. This is self-adapting:
 -- cheap (flat/plains) chunks cost ~0.05 ms so we blast through ~100 in a frame,
 -- while an expensive mountain chunk (~5 ms) simply consumes the whole budget on
@@ -129,6 +143,7 @@ blink.UnloadChunks.On(function(payloads)
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
         end
+        MeshedTextured[key] = nil
         local bc = BlockChunks[key]
         if bc then
             ChunkMesher.RecycleBlockChunk(bc)
@@ -158,6 +173,7 @@ local function ensureBlockMode(cx: number, cz: number): ChunkMesher.BlockChunk?
     if greedy then
         ChunkMesher.RecycleChunkModel(greedy)
         MeshedChunks[key] = nil
+        MeshedTextured[key] = nil
     end
     bc = ChunkMesher.BuildBlockChunk(ClientWorld[key], Chunks)
     BlockChunks[key] = bc
@@ -209,6 +225,7 @@ blink.SyncDiff.On(function(list)
         if m then
             ChunkMesher.RecycleChunkModel(m)
             MeshedChunks[key] = nil -- RenderStepped rebuilds it diff-aware
+            MeshedTextured[key] = nil
         end
     end
 end)
@@ -246,6 +263,7 @@ local function unloadFarChunks(pcx: number, pcz: number)
         if distToPlayer(key, pcx, pcz) > UNLOAD_RADIUS then
             ChunkMesher.RecycleChunkModel(model)
             MeshedChunks[key] = nil
+            MeshedTextured[key] = nil
         end
     end
     for key, bc in pairs(BlockChunks) do
@@ -267,9 +285,33 @@ local function demoteFarBlockChunks(pcx: number, pcz: number)
             BlockChunks[key] = nil
             local chunk = ClientWorld[key]
             if chunk then
-                MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks)
+                local tex = d <= textureRadius
+                MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks, tex)
+                MeshedTextured[key] = tex
             end
             return -- at most one demotion per frame
+        end
+    end
+end
+
+-- Rebuild chunks whose texture tier no longer matches their distance. Walking away
+-- drops a chunk to flat colour, walking back restores it. One per frame, like
+-- demotion: a rebuild dirties the renderer's batches, so doing a ring of them in a
+-- single frame is exactly the spike this whole change exists to avoid.
+local function retextureChunks(pcx: number, pcz: number)
+    for key, model in pairs(MeshedChunks) do
+        local d = distToPlayer(key, pcx, pcz)
+        local want = d <= textureRadius
+        if d <= UNLOAD_RADIUS and MeshedTextured[key] ~= want then
+            local chunk = ClientWorld[key]
+            if not chunk then
+                MeshedTextured[key] = want -- nothing to rebuild from; stop retrying
+                return
+            end
+            ChunkMesher.RecycleChunkModel(model)
+            MeshedChunks[key] = ChunkMesher.BuildChunk(chunk, Chunks, want)
+            MeshedTextured[key] = want
+            return
         end
     end
 end
@@ -282,8 +324,14 @@ RunService.RenderStepped:Connect(function()
     end
     local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
 
+    local attr = Workspace:GetAttribute("TextureRadius")
+    if type(attr) == "number" then
+        textureRadius = attr
+    end
+
     unloadFarChunks(pcx, pcz)
     demoteFarBlockChunks(pcx, pcz)
+    retextureChunks(pcx, pcz)
 
     -- Collect chunks the server has told us to load but that aren't meshed yet,
     -- tagged by squared distance to the player. Faces at chunk boundaries are
@@ -318,7 +366,9 @@ RunService.RenderStepped:Connect(function()
         -- malformed chunk would stop all meshing permanently, which reads exactly
         -- like "it renders a few chunks near spawn and then stops forever".
         local ok, err = pcall(function()
-            MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks)
+            local tex = distToPlayer(c.key, pcx, pcz) <= textureRadius
+            MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks, tex)
+            MeshedTextured[c.key] = tex
         end)
         if not ok then
             failedChunks[c.key] = true

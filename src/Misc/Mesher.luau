@@ -478,9 +478,27 @@ end
 -- ========== PUBLIC API ==========
 local ChunkMesher = {}
 
-function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
+-- `textured` (default true) decides whether this chunk gets per-face Texture
+-- objects or is left as flat block colour.
+--
+-- It is not a quality knob, it is THE performance knob. Roblox batches parts that
+-- share a material and colour — but a part carrying a Decal or Texture is excluded
+-- from batching entirely, and we hang up to six on every box. That is why a
+-- profile shows ~10 triangles per batch: nothing merges, and the main thread walks
+-- every box and every Texture separately. Untextured chunks fall back into the
+-- engine's batched path.
+--
+-- The cost of turning it off is close to nothing, because the textures were
+-- generated to match: tint.js normalises each one so its mean colour equals the
+-- block's declared colour in Blocks.luau (that is also why a block looks right
+-- before its texture streams in). At distance, flat colour and texture are the
+-- same handful of pixels.
+function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance, textured: boolean?): Model
     local model = Instance.new("Model")
     model.Name = "chunk_" .. chunkKey(chunk.cx, chunk.cz)
+    if textured == nil then
+        textured = true
+    end
 
     runGreedy3D(chunk, function(id, size, center, ePX, eNX, ePY, eNY, ePZ, eNZ, biomeId)
         local part = getPooledPart()
@@ -490,7 +508,7 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
         part.CastShadow = TERRAIN_CASTS_SHADOW and ePY
         part.Parent = model
 
-        local tex = BlockTextures[id]
+        local tex = if textured then BlockTextures[id] else nil
         if tex then
             -- Tint the grass TOP by the biome (sides keep the dirt fringe untinted).
             local topTint = if id == BLOCK_GRASS then biomeGrassColor(biomeId) else nil
