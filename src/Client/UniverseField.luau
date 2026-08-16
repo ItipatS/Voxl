@@ -63,6 +63,14 @@ local STAR_SIZE = 2047 -- planet diameter = the max part size (a bounded world; 
 local APPROACH_RADIUS = 4000 -- show a star's name + resource types within this [TUNE]
 local ENTER_RADIUS = 1500 -- fly this close → the "Enter" prompt appears (must be ≤ server ENTER_RADIUS) [TUNE]
 
+-- A LANDMARK is meant to be found, so its label carries much further than an
+-- ordinary star's — you should be able to see which way to fly from most of the
+-- way across the constellation. [TUNE]
+local LANDMARK_RADIUS = 90000
+-- How often the distance readouts refresh. They're read while flying, so a few
+-- times a second is plenty and costs nothing next to a per-frame loop.
+local DISTANCE_INTERVAL = 0.2
+
 local SILK = Font.new("rbxassetid://12187371840", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
 
 -- Tier → colour. Calm/cool at T1, hot/strange at T5 → "brighter/stranger = spicier"
@@ -97,6 +105,12 @@ folder.Name = "UniverseField"
 folder.Parent = Workspace
 
 local cells: { [string]: { Instance } } = {} -- cellKey -> instances (0 or 1 star per slot)
+
+-- Distance readouts for the stars currently rendered. Entries whose label has been
+-- destroyed (its cell unloaded) are dropped on the next pass, so this never needs
+-- unhooking from unloadCell.
+type Tracked = { label: TextLabel, pos: Vector3, landmark: boolean }
+local tracked: { Tracked } = {}
 
 local function cellKey(cx: number, cy: number, cz: number): string
 	return `{cx},{cy},{cz}`
@@ -167,21 +181,29 @@ local function makeStar(star: universe.Star): Instance
 	local root, part = buildBody(star)
 	root.Name = `Star_{star.slot[1]}_{star.slot[2]}_{star.slot[3]}`
 
-	-- Approach preview: auto-hidden past APPROACH_RADIUS via MaxDistance (no per-frame loop).
+	-- Approach preview: auto-hidden past MaxDistance (no per-frame visibility check).
+	local isLandmark = star.map ~= nil
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "Approach"
 	bb.Adornee = part
-	bb.Size = UDim2.fromOffset(300, 90)
+	bb.Size = UDim2.fromOffset(300, 120)
 	bb.StudsOffsetWorldSpace = Vector3.new(0, STAR_SIZE * 0.65, 0)
 	bb.AlwaysOnTop = true
 	bb.LightInfluence = 0
-	bb.MaxDistance = APPROACH_RADIUS
+	bb.MaxDistance = if isLandmark then LANDMARK_RADIUS else APPROACH_RADIUS
 	bb.Parent = part
 
-	local nameLbl = label(bb, 0, 0.6, typeColor)
-	nameLbl.Text = star.name
-	local typesLbl = label(bb, 0.62, 0.38, Color3.fromRGB(210, 220, 235))
+	local nameLbl = label(bb, 0, 0.45, typeColor)
+	nameLbl.Text = if isLandmark then `◆ {star.name}` else star.name
+	local typesLbl = label(bb, 0.47, 0.28, Color3.fromRGB(210, 220, 235))
 	typesLbl.Text = table.concat(star.types, "  ·  ")
+
+	-- Distance readout. Space has no landmarks to judge range against, so without a
+	-- number you cannot tell a star 2,000 studs away from one 40,000 away — they're
+	-- the same dot. Updated on an interval below.
+	local distLbl = label(bb, 0.74, 0.26, Color3.fromRGB(160, 175, 195))
+	distLbl.Text = ""
+	tracked[#tracked + 1] = { label = distLbl, pos = star.pos, landmark = isLandmark }
 
 	-- Enter prompt (expressive-prompts renders Style=Custom, via Prompts.luau). Appears when
 	-- you fly up to the planet; the server (starentry) validates + teleports into this star.
@@ -237,6 +259,16 @@ local function refreshCells(cx: number, cy: number, cz: number)
 			end
 		end
 	end
+	-- Landmarks stay loaded wherever you are. Raising their label's MaxDistance is
+	-- pointless on its own: a slot outside the render ring has no orb to label, so
+	-- the thing you're meant to navigate toward simply wouldn't exist yet. There
+	-- are only a handful of them, so this costs one orb each.
+	for _, L in universe.LANDMARKS do
+		local kx, ky, kz = L.slot[1], L.slot[2], L.slot[3]
+		want[cellKey(kx, ky, kz)] = true
+		loadCell(kx, ky, kz)
+	end
+
 	for key in cells do
 		if not want[key] then
 			unloadCell(key)
@@ -244,8 +276,36 @@ local function refreshCells(cx: number, cy: number, cz: number)
 	end
 end
 
+-- "12,480 studs" reads worse than "12.5k" at a glance while flying.
+local function studs(d: number): string
+	if d >= 10000 then
+		return `{string.format("%.1f", d / 1000)}k studs`
+	end
+	return `{string.format("%d", d)} studs`
+end
+
+local function updateDistances(from: Vector3)
+	local write = 1
+	for i = 1, #tracked do
+		local t = tracked[i]
+		if t.label.Parent then
+			local d = (t.pos - from).Magnitude
+			-- Subtract the orb's radius so the number is distance to the SURFACE —
+			-- "0" should mean you've arrived, not that you're inside the planet.
+			local surface = math.max(0, d - STAR_SIZE * 0.5)
+			t.label.Text = if surface < 1 then "arrived" else studs(surface)
+			tracked[write] = t
+			write += 1
+		end
+	end
+	for i = #tracked, write, -1 do
+		tracked[i] = nil -- its cell unloaded
+	end
+end
+
 local lastCenter: string? = nil
-RunService.Heartbeat:Connect(function()
+local sinceDistance = 0
+RunService.Heartbeat:Connect(function(dt: number)
 	local char = player.Character
 	local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
 	if not root then
@@ -256,6 +316,12 @@ RunService.Heartbeat:Connect(function()
 	if here ~= lastCenter then
 		lastCenter = here
 		refreshCells(cx, cy, cz)
+	end
+
+	sinceDistance += dt
+	if sinceDistance >= DISTANCE_INTERVAL then
+		sinceDistance = 0
+		updateDistances(root.Position)
 	end
 end)
 

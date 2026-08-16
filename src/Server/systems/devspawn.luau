@@ -20,10 +20,10 @@ local universe = require(ReplicatedStorage.std.universe)
 -- Name of a landmark from std/universe LANDMARKS, or nil for the authored spawn.
 local TARGET: string? = "Aldermoor"
 
--- Where to stand relative to the star. Inside starentry's ENTER_RADIUS (1600) so
--- the enter prompt is live the moment you spawn, and above the star so it reads as
--- "hanging over it" rather than "buried in it".
-local OFFSET = Vector3.new(0, 250, 1100)
+-- Where to stand relative to the star CENTRE. The orb is STAR_SIZE 2047 across, so
+-- its surface is ~1024 out — this parks you a few hundred studs off it, still inside
+-- the client's 1500-stud prompt range, rather than inside the glow.
+local OFFSET = Vector3.new(0, 400, 1350)
 
 local function landmarkPos(name: string): Vector3?
 	for _, L in universe.LANDMARKS do
@@ -53,16 +53,42 @@ if TARGET then
 			spawn.Parent = Workspace
 		end
 		spawn.Anchored = true
-		spawn.CFrame = CFrame.new(pos + OFFSET, pos) -- facing the star
-		print(`[devspawn] spawning beside "{TARGET}" at {pos + OFFSET} (star at {pos})`)
+		local target = CFrame.new(pos + OFFSET, pos) -- facing the star
+		spawn.CFrame = target
+		print(
+			`[devspawn] "{TARGET}" is at {pos}; spawning at {pos + OFFSET} `
+				.. `({math.round(OFFSET.Magnitude)} studs out)`
+		)
 
-		-- Anyone already in (Studio play solo starts before this runs) gets moved too.
-		for _, plr in Players:GetPlayers() do
-			local char = plr.Character
-			local root = char and char:FindFirstChild("HumanoidRootPart")
-			if root and root:IsA("BasePart") then
-				root.CFrame = spawn.CFrame + Vector3.new(0, 5, 0)
+		-- Moving the SpawnLocation is NOT enough on its own: if the place has another
+		-- SpawnLocation (authored, or nested somewhere FindFirstChildWhichIsA won't
+		-- reach) Roblox picks between them at random, and you land wherever it felt
+		-- like. So pin it two ways — RespawnLocation takes precedence over the random
+		-- pick, and the character is placed outright once it exists.
+		local function place(plr: Player, char: Model)
+			plr.RespawnLocation = spawn :: SpawnLocation
+			local root = char:FindFirstChild("HumanoidRootPart")
+			if not root then
+				root = char:WaitForChild("HumanoidRootPart", 5)
 			end
+			if root and root:IsA("BasePart") then
+				char:PivotTo(target + Vector3.new(0, 5, 0))
+			end
+		end
+
+		local function hook(plr: Player)
+			plr.RespawnLocation = spawn :: SpawnLocation
+			plr.CharacterAdded:Connect(function(char)
+				place(plr, char)
+			end)
+			if plr.Character then
+				place(plr, plr.Character)
+			end
+		end
+
+		Players.PlayerAdded:Connect(hook)
+		for _, plr in Players:GetPlayers() do
+			hook(plr) -- Studio play-solo joins before this system runs
 		end
 	end
 end
