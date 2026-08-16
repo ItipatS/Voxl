@@ -382,7 +382,7 @@ local ENTRANCE_THRESHOLD = 0.62 -- ...except in these regions, where they open u
 -- water. blockAt() adds trunk/leaf blocks into the air above the surface, so the
 -- mesher must raise its Y range by TREE_MAX_H over grass to fit the canopy.
 local TREE_CELL = 5
-local TREE_MAX_H = 10 -- tallest trunk (6) + canopy above (~3), + margin
+local TREE_MAX_H = 15 -- tallest conifer (12) + spire + margin
 
 local function hash2(x: number, z: number): number
     local h = bit32.band(x * 0x1f1f3d1f + z * 0x9e3779b1, 0xffffffff)
@@ -396,12 +396,76 @@ local function hash3(x: number, y: number, z: number): number
     return hash2(hash2(x, z) + y * 0x27d4eb2f, y)
 end
 
+-- Tree species. Every biome used to grow the same oak; now that the six log/leaf
+-- pairs exist, the species is what makes a taiga read as a taiga from a distance.
+-- `conifer` swaps the round canopy for a tapered one — the silhouette does more
+-- work than the colour at range.
+type TreeKind = { log: number, leaves: number, conifer: boolean? }
+local T_OAK: TreeKind = { log = BLOCK.OakLog, leaves = BLOCK.OakLeaves }
+local T_BIRCH: TreeKind = { log = BLOCK.BirchLog, leaves = BLOCK.BirchLeaves }
+local T_SPRUCE: TreeKind = { log = BLOCK.SpruceLog, leaves = BLOCK.SpruceLeaves, conifer = true }
+local T_JUNGLE: TreeKind = { log = BLOCK.JungleLog, leaves = BLOCK.JungleLeaves }
+local T_ACACIA: TreeKind = { log = BLOCK.AcaciaLog, leaves = BLOCK.AcaciaLeaves }
+local T_DARK: TreeKind = { log = BLOCK.DarkOakLog, leaves = BLOCK.DarkOakLeaves }
+
+-- Which species grows where. Kept here rather than in the biome table because the
+-- kinds are defined with the tree code, and only tree-growing biomes (treeDensity
+-- > 0) are ever consulted. Anything unlisted falls back to oak. [TUNE]
+local TREE_OF: { [number]: TreeKind } = {
+    [B_PLAINS] = T_OAK,
+    [B_FOREST] = T_OAK,
+    [B_MEADOW] = T_OAK,
+    [B_MARSH] = T_OAK,
+
+    [B_SAVANNA] = T_ACACIA,
+
+    [B_JUNGLE] = T_JUNGLE,
+    [B_WILDWOOD] = T_JUNGLE, -- vivid green reads as bioluminescent at range
+
+    [B_SEASONAL] = T_BIRCH,
+    [B_HIGHLAND] = T_BIRCH,
+
+    [B_TAIGA] = T_SPRUCE,
+    [B_TUNDRA] = T_SPRUCE,
+    [B_SNOWY_FOREST] = T_SPRUCE,
+
+    [B_SWAMP] = T_DARK,
+    [B_FEN] = T_DARK,
+    [B_MIRE] = T_DARK,
+    [B_SPORE_HOLLOW] = T_DARK,
+    [B_ANCIENT_GROVE] = T_DARK, -- old, dense and dark: the T4 Flora payoff
+}
+
 -- Block a tree rooted at its origin contributes at offset (dx,dy,dz); dy is height
--- above the origin's surface. Trunk is a column; canopy is a trimmed sphere.
-local function treeShape(dx: number, dy: number, dz: number, seed: number, wx: number, y: number, wz: number): number
+-- above the origin's surface.
+local function treeShape(
+    dx: number, dy: number, dz: number, seed: number,
+    wx: number, y: number, wz: number, kind: TreeKind
+): number
+    if kind.conifer then
+        -- Tall, narrow, tapering to a spire: radius shrinks as you climb, with a
+        -- couple of bare trunk blocks at the bottom.
+        local H = 8 + (seed % 5) -- 8..12
+        if dx == 0 and dz == 0 and dy >= 1 and dy <= H then
+            return kind.log
+        end
+        if dy >= 3 and dy <= H + 1 then
+            local t = (dy - 3) / (H - 1) -- 0 at the skirt, 1 at the tip
+            local rad = 3.1 * (1 - t)
+            -- layered: every other level pulls in, which reads as branches
+            if (dy % 2) == 0 then
+                rad -= 0.7
+            end
+            if rad > 0.4 and (dx * dx + dz * dz) <= rad * rad then
+                return kind.leaves
+            end
+        end
+        return BLOCK.Air
+    end
+
     local H = 5 + (seed % 3) -- trunk height 5..7
     if dx == 0 and dz == 0 and dy >= 1 and dy <= H then
-        return BLOCK.OakLog
+        return kind.log
     end
     -- Full, rounded canopy: a fat ellipsoid wrapping the top few trunk blocks
     -- (from 3 below the top to 2 above), only lightly trimmed at the very edge.
@@ -413,7 +477,7 @@ local function treeShape(dx: number, dy: number, dz: number, seed: number, wx: n
             if d2 > (rad - 0.8) * (rad - 0.8) and (hash3(wx, y, wz) % 100) < 22 then
                 return BLOCK.Air
             end
-            return BLOCK.OakLeaves
+            return kind.leaves
         end
     end
     return BLOCK.Air
@@ -423,7 +487,7 @@ end
 -- origin column's biome/height), so memoize it per cell. blockAt() hits the same
 -- ~9 cells for every Y in a column, so this collapses thousands of getColumn calls
 -- per chunk down to a couple dozen. Deterministic → the cache never invalidates.
-type TreeInfo = { wx0: number, wz0: number, surf0: number, seed: number }
+type TreeInfo = { wx0: number, wz0: number, surf0: number, seed: number, kind: TreeKind }
 local treeCache: { [number]: { [number]: TreeInfo | false } } = {}
 local treeCacheN = 0
 
@@ -450,7 +514,7 @@ local function treeAtCell(gx: number, gz: number): TreeInfo | false
         if surf0 >= WATER_LEVEL and surf0 >= 55 then
             local density = Biomes[biome0].treeDensity
             if density > 0 and (math.floor(h / 100) % 100) < density then
-                result = { wx0 = wx0, wz0 = wz0, surf0 = surf0, seed = h }
+                result = { wx0 = wx0, wz0 = wz0, surf0 = surf0, seed = h, kind = TREE_OF[biome0] or T_OAK }
             end
         end
     end
@@ -474,7 +538,7 @@ local function treeBlockAt(wx: number, y: number, wz: number): number
         for dgx = -1, 1 do
             local t = treeAtCell(gx0 + dgx, gz0 + dgz)
             if t then
-                local b = treeShape(wx - t.wx0, y - t.surf0, wz - t.wz0, t.seed, wx, y, wz)
+                local b = treeShape(wx - t.wx0, y - t.surf0, wz - t.wz0, t.seed, wx, y, wz, t.kind)
                 if b ~= BLOCK.Air then
                     return b
                 end
@@ -688,6 +752,84 @@ function WorldGen.materialAt(y: number, surfaceY: number, biomeId: number): numb
     return BLOCK.Stone
 end
 
+-- ===================== Stone strata + ore veins =====================
+-- Stone used to be one flat material all the way down. Two cheap passes give it
+-- depth instead, and neither touches the noise field: both are pure integer hashes,
+-- because this runs for every stone cell the mesher evaluates.
+--
+-- STRATA: below DEEPSLATE_DEPTH under the surface the rock turns to deepslate, with
+-- a hashed jitter so the boundary is a ragged seam rather than a drawn line.
+--
+-- VEINS: space is tiled into ORE_CELL cubes, each hashing to at most one vein — the
+-- same trick the trees use. A cell is ore if it falls inside that vein's blob. Depth
+-- is measured BELOW THE SURFACE, not in absolute y, so the ladder holds whether the
+-- column is a beach or a mountain. [TUNE]
+local DEEPSLATE_DEPTH = 30
+local ORE_CELL = 12
+
+type OreDef = { block: number, minDepth: number, maxDepth: number, weight: number, size: number }
+local ORES: { OreDef } = {
+    -- block            depth band          weight  blob radius²
+    -- Depths are scaled to a STAR, not to Minecraft. A star's island is only ~50
+    -- blocks from surface to the mesh floor, so a Minecraft-style "diamond below 55"
+    -- would mean diamond that literally cannot spawn.
+    { block = BLOCK.CoalOre,     minDepth = 4,  maxDepth = 999, weight = 30, size = 3.2 },
+    { block = BLOCK.CopperOre,   minDepth = 8,  maxDepth = 46,  weight = 20, size = 2.8 },
+    { block = BLOCK.IronOre,     minDepth = 12, maxDepth = 999, weight = 22, size = 2.6 },
+    { block = BLOCK.LapisOre,    minDepth = 22, maxDepth = 999, weight = 8,  size = 2.0 },
+    { block = BLOCK.GoldOre,     minDepth = 26, maxDepth = 999, weight = 8,  size = 2.0 },
+    { block = BLOCK.RedstoneOre, minDepth = 28, maxDepth = 999, weight = 9,  size = 2.3 },
+    { block = BLOCK.EmeraldOre,  minDepth = 32, maxDepth = 999, weight = 2,  size = 1.4 },
+    { block = BLOCK.DiamondOre,  minDepth = 36, maxDepth = 999, weight = 3,  size = 1.8 },
+}
+local ORE_WEIGHT_TOTAL = 0
+for _, o in ORES do
+    ORE_WEIGHT_TOTAL += o.weight
+end
+-- Fraction of cells that hold a vein at all. Most of the rock stays rock. [TUNE]
+local ORE_CHANCE = 34 -- out of 100
+
+-- What a stone cell actually is: plain stone, deepslate, or part of an ore vein.
+local function stoneAt(wx: number, y: number, wz: number, surfaceY: number): number
+    local depth = surfaceY - y
+    local base = BLOCK.Stone
+    if depth > DEEPSLATE_DEPTH + (hash2(wx, wz) % 7) then
+        base = BLOCK.Deepslate
+    end
+
+    local gx = wx // ORE_CELL
+    local gy = y // ORE_CELL
+    local gz = wz // ORE_CELL
+    local h = hash3(gx, gy, gz)
+    if (h % 100) >= ORE_CHANCE then
+        return base
+    end
+
+    -- pick this vein's ore by weight, then its centre within the cell
+    local roll = (h // 100) % ORE_WEIGHT_TOTAL
+    local ore: OreDef = ORES[1]
+    local acc = 0
+    for _, o in ORES do
+        acc += o.weight
+        if roll < acc then
+            ore = o
+            break
+        end
+    end
+    if depth < ore.minDepth or depth > ore.maxDepth then
+        return base
+    end
+
+    local cx = gx * ORE_CELL + (h // 7) % ORE_CELL
+    local cy = gy * ORE_CELL + (h // 53) % ORE_CELL
+    local cz = gz * ORE_CELL + (h // 401) % ORE_CELL
+    local dx, dy, dz = wx - cx, y - cy, wz - cz
+    if dx * dx + dy * dy + dz * dz <= ore.size * ore.size then
+        return ore.block
+    end
+    return base
+end
+
 -- Full cave-aware block at a cell (carves caves out of the terrain). Used by the
 -- client to render the true 3D terrain (surface + caves) with no data transfer.
 function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, biomeId: number): number
@@ -700,7 +842,7 @@ function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, b
         return treeBlockAt(wx, y, wz)
     end
     if y < CAVE_START_Y then
-        return mat
+        return if mat == BLOCK.Stone then stoneAt(wx, y, wz, surfaceY) else mat
     end
     -- In entrance regions the carve reaches the surface and cuts through soil too,
     -- so caves open to the sky; elsewhere they stay capped a few blocks down and
@@ -711,6 +853,11 @@ function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, b
         if sampleCaveNoise(wx, y, wz) > CAVE_THRESHOLD then
             return BLOCK.Air
         end
+    end
+    -- Strata + ores AFTER the carve, so a cave cutting through a vein opens it up
+    -- rather than being blocked by it — which is how you find ore by exploring.
+    if mat == BLOCK.Stone then
+        return stoneAt(wx, y, wz, surfaceY)
     end
     return mat
 end
