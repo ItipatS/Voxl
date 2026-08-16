@@ -14,7 +14,7 @@ ItemDB (std, static)     PlayerStore (server, authority)      ItemMirror (client
   grade, weight, stack,    + derived weight/capacity            {items, weight, cap}     UIData/TierEffect/
   usableIn, behavior       .item.add/consume/use, syncItems()   fires a change signal    TooltipBuilder
   + block→weight bridge     ItemSync (server→client)            reads mirror only        (pure view helpers)
-                            UseItem/DropItem (client→server)
+                            MoveItem/UseSlot/EquipItem (client→server)
 ```
 
 ## Ownership (the anti-race rule, doc 16 §1/§6)
@@ -65,34 +65,62 @@ server-side with its own validation. `plant_star` → resolves the player's grid
 consumes one seed on success. Decoupled: PlayerStore calls the registry by key; it
 doesn't know what planting is.
 
-## Blink events (added to `Net.blink` — REGEN PENDING with the star events)
+## Blocks are items
+
+There is one inventory. A block is an ordinary `ItemDef`, generated from the block
+registry rather than authored:
+
+| | |
+|---|---|
+| `kind` | `"Block"` — the fourth kind (doc 20). Inert in the grid like a Material, but the only kind that can go back INTO the world |
+| `key` | `block_<id>` — a block's NAME can be reworded, its id cannot, and the key is what lands in save data |
+| `id` | `10000 + blockId`, clear of every other range (materials 1000+, tools 2000+, recipe placeholders 3000+) |
+| `placesBlock` | the block id to place. **This field is the whole bridge** — before it, nothing could turn a block into an item, which is why the star place kept a second inventory |
+| visual | neither `icon` nor `model`: the slot draws the actual cube via `BlockPreview`, which is free and always correct where 190 hand-made sprites would not be |
+
+`itemdb.forBlock(blockId)` and `itemdb.blockOf(key)` are the two accessors.
+
+Consequences worth knowing before you touch this:
+
+- **Breaking can FAIL.** Slots are finite; the old `blockId -> count` map was not.
+  `PlayerStore.add` returns leftover and `BlockEditServer` refuses the break, leaving
+  the block in the world rather than mining it into nothing.
+- **Old profiles are migrated once** on load (`onAdded` drains `Data.blocks` into
+  slots and says how many moved). The field stays, always empty.
+- **Ids are permanent.** `tools/mcimport/test_itemdb.luau` checks every block
+  round-trips both ways, that no id or key collides, and that block ids stay above
+  every other range. Run it after touching `Blocks.luau` or `itemdb`.
+## Blink events (in `Net.blink`, generated)
 
 ```
-struct ItemStack { item: u16, count: u32 }
-struct ItemInv   { weight: u32, capacity: u32, items: ItemStack[] }   -- full push
+struct SlotEntry { slot: u8, item: u16, count: u32 }
+struct ItemInv   { weight: u32, capacity: u32, slots: SlotEntry[] }   -- full push
 event ItemSync   { From: Server,  Reliable, Data: ItemInv }           -- after every change
-event UseItem    { From: Client,  Reliable, Data: u16 }               -- item id; server reads pos
-event DropItem   { From: Client,  Reliable, Data: ItemStack }         -- item + count
+event MoveItem   { From: Client,  Reliable, Data: MovePair }          -- drag a stack between slots
+event UseSlot    { From: Client,  Reliable, Data: u8 }                -- right-click a slot (Consumables)
+event EquipItem  { From: Client,  Reliable, Data: u16 }               -- hold a Tool (0 = unequip)
+-- NOTE: UseItem / DropItem were designed here and never built. Dropping to the world
+-- is still an open follow-up; there is no world-pickup entity yet.
 ```
-Mirrors block `InventorySync`/`EditBlock`; blocks keep their own channel unchanged.
+**Blocks ride in here too.** They are items keyed `block_<id>` (see "Blocks are items" below), so `ItemSync` is the ONLY inventory channel — `InventorySync`/`BlockCount` are deleted.
 
 ## Client (`src/Client/ItemMirror.luau`) + UI
 
 - `ItemMirror` — listens to `ItemSync`, holds `{items, weight, capacity}`, fires a change
   signal, exposes getters. **No UI, no writes.** The mirror the whole client reads.
 - Item UI (rebuilt, replacing `_graveyard/InventoryManager`) — drives the authored
-  `PlayerGui.Interface` (Inventory/Equipments/quickMenu, toggled by `InventoryToggle`)
+  `PlayerGui.Interface` (Inventory/Equipments, a registered panel on **E**; the Bag button is `QuickMenu.Bag` — note the capital Q, doc 19)
   from `ItemMirror`: one slot per stack, grade color/effect via `UIData:GetGradeTier` +
   `TierEffectManager.ApplyEffects`, tooltip via `TooltipBuilder`, a **weight bar**
-  (`weight/capacity`). Click a `usableIn`-current-mode item → `UseItem`; drag-out →
-  `DropItem`. **View only** — it never mutates counts.
+  (`weight/capacity`). Drag a stack → `MoveItem`; right-click a Consumable → `UseSlot`;
+  select a Tool in the hotbar → `EquipItem`. **View only** — it never mutates counts.
 
 ## Build order / status
 
 1. [x] Quarantine `_graveyard` inventory graft (doc 16 §5).
 2. [x] `ItemDB` + Star Seed + block-weight bridge + capacity.
 3. [x] Blink item events (regen pending).
-4. [x] `PlayerStore` extended to items + weight + `ItemSync` + `UseItem`/`DropItem`; wired in both modes.
+4. [x] `PlayerStore` extended to items + weight + `ItemSync` + `MoveItem`/`UseSlot`; wired in both modes.
 5. [x] `ItemBehaviors` registry + `plant_star`.
 6. [x] `ItemMirror` client cache.
 7. [x] `blink Net.blink` regenerated — item + star events live in `ServerNet`/`ClientNet`.
@@ -101,7 +129,7 @@ Mirrors block `InventorySync`/`EditBlock`; blocks keep their own channel unchang
    and the salvaged `UIData`/`TierEffectManager`/`TooltipBuilder` helpers. Left-click = USE
    (server-gated by `usableIn × placemode`), right-click = DROP one. Adds a **weight bar**
    (`weight/capacity`, red when over). Wired into `main.client` for both places, plus
-   `InventoryToggle` in the Lobby (E / Bag button opens it).
+   the Inventory panel on **E** / the Bag button, in BOTH places (doc 19 registry).
 
 **GUI facts (from Studio inspection):** slots go in `Interface.Inventory.ItemSlots`
 (ScrollingFrame + UIGridLayout); slot template is `StarterGui.ItemTemplate.ItemTemplate`
@@ -117,12 +145,13 @@ or — if neither is set (or the model is missing) — the **debug placeholder t
 That constant is shared, so block visuals can use the same fallback. World-drop representation
 (2D billboard vs 3D) is a *separate* concern for the drop-pickup feature (still TODO).
 
-**Shared grid contract:** `Inventory.ItemSlots` is filled by TWO renderers — `InventoryRender`
-(blocks, frames `Block_<id>`, ResourceStar only) and `ItemInventory` (items, frames `Item_<key>`,
-both places). Each **tracks and reconciles only the frames it created** (never sweeps the container),
-so they coexist without clobbering — the one-writer rule applied to a shared view.
+**One renderer, not two.** `Inventory.ItemSlots` used to be filled by BOTH
+`InventoryRender` (blocks, `Block_<id>` frames, star place only) and `ItemInventory`
+(items, 45 static slots) — a "shared grid contract" that only held because the two
+places never loaded both. Blocks are items now, so `ItemInventory` owns the grid
+outright and `InventoryRender` is in `_graveyard`.
 
 **Follow-ups (minor, [TUNE]):** (a) the weight bar lives inside the Inventory window (visible when
 open) — promote to an always-on HUD element if weight should be glanceable during flight/gathering.
 (b) E toggles the inventory in the Lobby; if private-star "press E to enter" is added later, rebind one.
-(c) `DropItem` frees weight but doesn't yet spawn a world pickup (2D billboard / 3D) — the drop feature.
+(c) Dropping to the world does not exist at all — no `DropItem` event, no world pickup entity. Still open.

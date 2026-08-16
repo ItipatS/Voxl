@@ -213,6 +213,47 @@ assets you own, which is why the tool uploads rather than fetches: the id comes
 back from the upload and is cached, so no id is ever typed by hand. Details:
 `tools/textures/README.md`.
 
+## 5b. What rendering this map forced (read before tuning the mesher)
+
+A real town is not a procedural island, and three things only showed up here:
+
+- **Water is Roblox TERRAIN, not parts.** Water was 5.6% of boxes and far more than
+  5.6% of the cost: transparent geometry never batches and an ocean is a wide flat
+  sheet aimed at the camera. The mesher writes water cells into Terrain instead — one
+  render object, and swimming, buoyancy and underwater fog come free. A chunk is 56
+  studs = exactly 14 terrain voxels, so chunks tile the voxel grid and can never write
+  over each other.
+- **Leaves are FAST by default.** Leaves are ~30% of all boxes and were `alpha = 1`,
+  which put ~30,000 TRANSPARENT parts into a per-frame depth sort — standing
+  perfectly still. They now draw the same cutout texture on an OPAQUE part coloured
+  with the texture's own alpha-weighted mean (`lodColor` in `Blocks.luau`), on
+  SmoothPlastic rather than LeafyGrass. `FANCY_LEAVES` / the `FancyLeaves` attribute
+  buys the see-through canopy back, and the sort with it. This is Minecraft's
+  Fast/Fancy trade, for the same reason.
+- **Budget INSTANCES per frame, never milliseconds.** A cheap chunk meshes in ~0.05 ms,
+  so a 5 ms Luau budget built ~100 of them in one frame and handed the engine ~35,000
+  new parts. The engine ingests those inside `RenderViewUpdate`, on the main thread,
+  where no script timer can see it — the profile shows a 50 ms render bar and no Lua
+  time and looks like "the renderer is slow". `INSTANCE_BUDGET` counts instances, not
+  boxes, because a textured box is a part plus up to six Textures.
+
+**Live knobs** (client, no rebuild — graphics settings for a weak machine, not fixes):
+
+```lua
+Workspace:SetAttribute("RenderRadius", 5)     -- how much world exists; moves `Scene`
+Workspace:SetAttribute("TextureRadius", 3)    -- texture LOD; ships OFF (math.huge)
+Workspace:SetAttribute("MeshBudget", 800)     -- new instances per frame
+Workspace:SetAttribute("FancyLeaves", true)   -- see-through canopy, costs the sort
+```
+
+**The spawn point is AUTHORED.** `starconfig.MAP_SPAWN[<map>]` (studs) beats the
+bake's guess. A bake picks the most central dry flat column it can find, which is the
+right rule for "not in the sea" and no rule at all for landing somewhere worth
+arriving at. It lives there and not in the map data because the map data is generated.
+
+**All five hub-towns share this one map** (`constellation.HUB_DEFS`), so terrain cannot
+tell you which hub you are in — only `starName` and the seed (1001-1005) differ, and
+`StarRouting` is what actually keeps each hub's visitors on one server.
 ## 6. Two engine changes this forced
 
 Both are strict improvements to the procedural game as well:
@@ -223,7 +264,7 @@ Both are strict improvements to the procedural game as well:
   neighbour. Leaves benefit too.
 - **Non-solid blocks.** `BlockDef.solid = false` (water, lava) makes the mesher emit
   parts with `CanCollide` and `CanQuery` off — you fall through them, and they don't
-  eat the raycast that block editing fires at the world. *There is no swimming yet:
+  eat the raycast that block editing fires at the world. *Water is the exception — it is written to Roblox **Terrain** rather than emitted as parts, so you swim, with waves and underwater fog. (Was: no swimming;
   you sink to the seabed and walk. See §9.*
 
 Plus one that only matters here: **the mesher's floor is per-chunk.** It used to
@@ -291,7 +332,7 @@ at `--cx 128 --cz -600` is just the temple. Re-bake and update
 - **No swimming.** Water is a non-colliding block: you sink and walk the seabed.
   Real buoyancy needs either Roblox terrain water or a swim controller.
 - **The sky layer is expensive to mesh.** Chunks holding both ground and the y≈246
-  cloud city span 166 levels. The time budget in `ChunkClient` keeps it to one chunk
+  cloud city span 166 levels. The INSTANCE budget in `ChunkClient` (`INSTANCE_BUDGET`; a Luau time budget measured the wrong cost) keeps it to a few chunks
   per frame, so it shows up as an occasional hitch near the airships, not a stall.
 - **The island has no underside.** The mesher treats below-floor as solid and draws
   no bottom faces, so from beneath, the world is invisible. Fine while stars are

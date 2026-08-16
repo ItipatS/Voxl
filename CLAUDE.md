@@ -1,8 +1,8 @@
 # Voxl — Project Brief for Claude Code
 
-> Entry point. Read this first, then the numbered design docs in **`.claude/01–17`** (the `/docs` folder is deprecated — do not use it). **For how the code is actually structured, read `.claude/16-engine-baseline.md` — the engineering map (layers, dependency rule, what's canonical vs ported rot).** **To resume in-progress work, read `.claude/14-lobby-build-state.md` first** — it's the as-built state + next step. This file is the map; the docs are the territory.
+> Entry point. Read this first, then the numbered design docs in **`.claude/01–23a`** (the old `/docs` folder is GONE — every numbered doc lives in `.claude/`). **For how the code is actually structured, read `.claude/16-engine-baseline.md` — the engineering map (layers, dependency rule, what's canonical vs ported rot).** **To resume in-progress work, read `.claude/14-lobby-build-state.md` first** — it's the as-built state + next step. This file is the map; the docs are the territory.
 
-> ⚠️ **WORLD-MODEL PIVOT — read `DESIGN.md` (repo root).** Voxl is now an **explore-and-claim** game: **one procedural star type** across an unlimited universe; you explore, find a world worth living in, and **claim it as your home** with a Starseed. `DESIGN.md` **SUPERSEDES the world model in docs 03/05/06** (fixed resource-regions, biome-places, and weight are gone; the 5 pentagram points are now communal **starter hub-towns**). Soul (01/02), progression (10/11), and the core crafting invariant are **unchanged**. Where `DESIGN.md` conflicts with 03/05/06, it wins. (Distinct from the deprecated `docs/DESIGN.md`.)
+> ⚠️ **WORLD-MODEL PIVOT — read `DESIGN.md` (repo root).** Voxl is now an **explore-and-claim** game: **one procedural star type** across an unlimited universe; you explore, find a world worth living in, and **claim it as your home** with a Starseed. `DESIGN.md` **SUPERSEDES the world model in docs 03/05/06** (fixed resource-regions, biome-places, and weight are gone; the 5 pentagram points are now communal **starter hub-towns**). Soul (01/02), progression (10/11), and the core crafting invariant are **unchanged**. Where `DESIGN.md` conflicts with 03/05/06, it wins. 
 
 ## What Voxl is (one paragraph)
 
@@ -30,28 +30,28 @@ The design lineage, and the *one load-bearing idea* stolen from each:
 | Doc | Covers |
 |---|---|
 | **`DESIGN.md` (repo root)** | **⭐ CURRENT world-model canon — the explore-and-claim pivot. One star type, procedural universe, claim-your-home, starter hub-towns, slots-not-weight. SUPERSEDES 03/05/06 where they conflict. Read first for anything world/economy/ownership.** |
-| `docs/01-vision.md` | Pitch, what it is / isn't, target feel, non-goals |
-| `docs/02-design-principles.md` | The hard rules every system must obey |
-| `docs/03-core-loop-and-gathering.md` | Gather loop, biomes, node vs normal scarcity, weight — ⚠️ *weight & fixed biomes superseded by `DESIGN.md`; node-vs-normal + gather feel still canon* |
-| `docs/04-progression-and-crafting.md` | Skills/mastery, rarity + tier crafting, factories, offline |
-| `docs/05-economy-and-markets.md` | Resource-star markets, sinks, guardrails, two-market split — ⚠️ *regional/biome-market geography superseded by `DESIGN.md`; sinks/guardrails still canon* |
-| `docs/06-worlds-and-cluster-lobby.md` | Star worlds, ownership, the cosmic lobby, biome choice — ⚠️ *resource/private split & fixed-biome choice superseded by `DESIGN.md`; ownership/permissions/hosting still canon* |
-| `docs/07-technical-architecture.md` | **Current repo reality** + the big open technical forks |
-| `docs/08-vertical-slice.md` | The MINIMUM playable thing to build & feel-test FIRST |
-| `docs/09-open-questions.md` | Everything undecided, flagged for discussion |
-| `docs/10-progression.md` | Skills, gear split, journal/milestones, rarity, backbone |
-| `docs/11-skill-equipment-tier-matrix.md` | Reference tables: skill matrix, gear grid, tier bands, core invariant |
-| `docs/12-loopholes-and-exploits.md` | Known exploitable gaps to defend against |
+| `.claude/01-vision.md` | Pitch, what it is / isn't, target feel, non-goals |
+| `.claude/02-design-principles.md` | The hard rules every system must obey |
+| `.claude/03-core-loop-and-gathering.md` | Gather loop, biomes, node vs normal scarcity, weight — ⚠️ *weight & fixed biomes superseded by `DESIGN.md`; node-vs-normal + gather feel still canon* |
+| `.claude/04-progression-and-crafting.md` | Skills/mastery, rarity + tier crafting, factories, offline |
+| `.claude/05-economy-and-markets.md` | Resource-star markets, sinks, guardrails, two-market split — ⚠️ *regional/biome-market geography superseded by `DESIGN.md`; sinks/guardrails still canon* |
+| `.claude/06-worlds-and-cluster-lobby.md` | Star worlds, ownership, the cosmic lobby, biome choice — ⚠️ *resource/private split & fixed-biome choice superseded by `DESIGN.md`; ownership/permissions/hosting still canon* |
+| `.claude/07-technical-architecture.md` | **Current repo reality** + the big open technical forks |
+| `.claude/08-vertical-slice.md` | The MINIMUM playable thing to build & feel-test FIRST |
+| `.claude/09-open-questions.md` | Everything undecided, flagged for discussion |
+| `.claude/10-progression.md` | Skills, gear split, journal/milestones, rarity, backbone |
+| `.claude/11-skill-equipment-tier-matrix.md` | Reference tables: skill matrix, gear grid, tier bands, core invariant |
+| `.claude/12-loopholes-and-exploits.md` | Known exploitable gaps to defend against |
 | `.claude/13-constellations-and-plots.md` | Lobby layout, plots, warp/no-plant radii |
 | `.claude/15-data-schema.md` | ProfileStore + MemoryStore storage shapes |
 | **`.claude/16-engine-baseline.md`** | **Engineering entry point — the codebase map: layers, dependency rule, canonical vs ported rot. Read before touching any system.** |
 | `.claude/17-items-and-inventory.md` | Item layer (ItemDB, weight, Blink, Star Seed) — first subsystem rebuilt to the baseline |
 | `.claude/18-planting.md` | Planting a private star: overlay → CreatePlanet prompt → server-validated commit; `UIController` |
 | `.claude/19-ui-conventions.md` | **UI framework + house style** (UIController/UISound/UITween/Notifier): sound, transitions, modals, notices — read before adding any UI |
-| `.claude/20-items-hotbar-tools.md` | Item `kind` (Tool/Consumable/Material), hotbar equip → server-spawned held Tool + particle LOD, activation → behavior |
+| `.claude/20-items-hotbar-tools.md` | Item `kind` (Tool/Consumable/Material/**Block**), hotbar equip → server-spawned held Tool + particle LOD, activation → behavior. **Blocks are items now** (`block_<id>`, `placesBlock`): ONE inventory across both places |
 | `.claude/21-biomes-and-worldgen.md` | **Biome canon — 5 resource types × 5-tier ladders = 25 biomes, what a TIER means, bounded-star worldgen (reuse `WorldGen`), resource nodes as special meshes** |
 | `.claude/22-crafting-and-stations.md` | **Crafting canon — 3×3 pattern table + time-based stations (furnace/sawmill/crusher/…) + factories; raw→refined→product flow; the tier recipe ladder (what unlocks when)** |
-| `.claude/23-imported-maps.md` | **Baked worlds — importing a real Minecraft save as a LANDMARK star (`tools/mcimport`, VXM3 format, server-only + per-chunk streaming, the builder block set, `WorldGen.applyPrebaked`)** |
+| `.claude/23-imported-maps.md` | **Baked worlds — importing a real Minecraft save as a HUB-TOWN star (`tools/mcimport`, VXM3 format, server-only + per-chunk streaming, the builder block set, `WorldGen.applyPrebaked`)** |
 | `.claude/23a-block-coverage.md` | Generated block inventory for the imported map: which Voxl blocks it needs, what's dropped and whether that matters. Regenerate with `tools/mcimport/inventory.js` |
 
 ## Decision status convention
@@ -71,7 +71,7 @@ Throughout the docs:
 - **Cross-system messaging:** `std/mailbox.luau` (singleton buffers keyed by component).
 - **Entity refs by key:** `std/ref.luau`.
 - **Server-authoritative** by default. Client renders from replicated data; it does not own state.
-- **Moving many parts per frame:** batch them into ONE `Workspace:BulkMoveTo(parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)` — never per-part `.CFrame`/`.Position`/`:PivotTo` in a `RenderStepped`/`Heartbeat` loop (each of those hits property-change + replication + physics events individually). Reuse persistent `parts`/`cframes` buffers, trim the tail to the live count, and bake per-part rotation into the CFrame. (Applied in `StarField`/`StarRenderer`/`AsteroidRenderer`.)
+- **Moving many parts per frame:** batch them into ONE `Workspace:BulkMoveTo(parts, cframes, Enum.BulkMoveMode.FireCFrameChanged)` — never per-part `.CFrame`/`.Position`/`:PivotTo` in a `RenderStepped`/`Heartbeat` loop (each of those hits property-change + replication + physics events individually). Reuse persistent `parts`/`cframes` buffers, trim the tail to the live count, and bake per-part rotation into the CFrame. (Applied in `DustField`/`StarRenderer`/`AsteroidRenderer`.)
 
 ## Tooling & capabilities (what Claude can run directly)
 
@@ -102,6 +102,13 @@ tool work you can do yourself.
   See `tools/textures/README.md`.
 - **Linear MCP** — the MAIN team's Voxlstar project (M1–M10 board). Reconcile plan/progress here.
 - **Git / `gh`** — standard; commit/push only when asked (see repo rules).
+- **Lune** — runs the real Luau modules outside Roblox, which is how anything
+  load-bearing gets VERIFIED rather than assumed. `tools/mcimport/*.luau`:
+  `syntax.luau <files>` (compile-check; run it after every edit),
+  `test_mesher.luau` (greedy mesher: zero overlapping cells, per-block box census),
+  `test_itemdb.luau` (every block round-trips to an item, no id/key collisions),
+  `test_reader.luau` (baked map matches the Minecraft source),
+  `test_inflate.luau`, `test_ids.luau`, `test_worldgen.luau`.
 
 ## Golden rule for any new system
 

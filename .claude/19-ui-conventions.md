@@ -40,12 +40,13 @@ Every GUI runs through the framework — there is no bespoke `.Visible` toggling
   gets **hover + "select" click** automatically. A button opts out of the auto click sound with
   the `UISoundOwned` attribute (set on panel buttons + controller-owned buttons like Confirm/Cancel),
   checked at click time so registration order never matters.
-- **HUD** frames (HotBar, quickMenu, Forcast, QuestTrack, Error) are left alone — not panels.
+- **HUD** frames (HotBar, Forcast, QuestTrack, Error) are left alone — not panels.
+  `QuickMenu` IS a panel (group `main`), raised by the `Menu` button.
 
 ### Recipe: add a new panel (e.g. a Map)
 1. Author `Interface.Map` in Studio (AnchorPoint `0.5,0.5` to pop from centre).
 2. `UIRegistry.PANELS`: it's already listed → just make sure the frame exists. Add `key`/`modal` if wanted.
-3. `UIRegistry.BUTTONS`: `quickMenu.Map → Map` is already listed. Done — it opens/closes/pops/sounds, is
+3. `UIRegistry.BUTTONS`: `QuickMenu.Map → Map` is already listed. **Mind the capital Q** — `FindFirstChild` is case-sensitive and a path that misses is a SILENT skip, which is exactly how Bag/Map/Quest sat dead for months. Done — it opens/closes/pops/sounds, is
    exclusive with the other `main` panels, and every button inside it gets feedback automatically.
 
 ## Rules (obey these for every new UI)
@@ -98,7 +99,7 @@ it never requires the module (which trips its plugin path).
   ("Forest"), the black hole ("The Maw"), open Cluster. One at a time. *(built — ZoneWatcher)*
 - **Toast** (`Notifier.toast`) — small corner stack, auto-dismiss: pickups, skill-ups, warnings.
   Kinds: `notify` (default), `skill`, `error`. *(built)*
-- **Countdown HUD** — `ResourceStarEntry`'s "Entering ForestStar…" proximity bar. *(exists)*
+- **Countdown HUD** — *(gone)* `ResourceStarEntry` is in `_graveyard`; entry is the `UniverseField` prompt → `EnterHub`/`EnterStar` → `starentry`, wrapped in the iris transition.
 - **Modal prompt** — `CreatePlanet` (name a star). *(built)*
 
 ## Z-order layers (keep panels from fighting)

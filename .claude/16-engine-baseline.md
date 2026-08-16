@@ -72,8 +72,8 @@ require chain from one of them, **it does not run**, no matter how real it looks
 **Networking** — Blink IDL:
 - `Net.blink` is the **source**. `ServerNet.luau` (`src/Server`) + `ClientNet.luau`
   (`src/std`) are **generated — never hand-edit**. Edit `Net.blink`, run `blink Net.blink`.
-- ⚠️ **Regen is currently pending** (star-field + item events added). Until the user
-  runs `blink Net.blink`, those events error.
+- The `blink` CLI runs directly in Bash — regenerate yourself after every `Net.blink`
+  edit. Never ask the user to run it, and never hand-edit the generated files.
 
 **Voxel core (`src/Misc`, shared):** `Blocks`, `Mesher` (greedy), `WorldGen` (terrain
 + `BLOCK` ids + `BLOCK_SIZE`), `WorldDiff`. Healthy; the game's foundation.
@@ -85,36 +85,60 @@ require chain from one of them, **it does not run**, no matter how real it looks
 landmarks/plant rules), `starsize` (expandTier → footprint×height), `planting`
 (resident grid). All canonical, all new.
 
-**Server systems (`src/Server/systems`, canonical):**
-`ChunkServer`, `players`, `spawn`, `BlockEditServer`, `WorldStore`, `LockService`
-(shared); `lobby`, `constellation`, `collectables` (Lobby); `PrivateStarStore`,
-`RegionSeed` (data foundation, new). Wired by name in `main/init.server.luau`'s
-`LOBBY_SYSTEMS` / `RESOURCE_SYSTEMS`.
+**Server systems (`src/Server/systems`, canonical):** wired BY NAME in
+`main/init.server.luau`'s `LOBBY_SYSTEMS` / `RESOURCE_SYSTEMS` — a file in this folder
+that appears in neither list does not run, and a name in a list with no file only warns.
 
-**Client (`src/Client`, canonical):**
-Lobby → `FlightController`, `StarField`, `StarRenderer`, `SpaceProxies`,
-`ResourceStarEntry`, `Music`. ResourceStar → `ChunkClient`, `BlockInventory`,
-`Hotbar`, `BlockEdit`, `InventoryRender`, `BlockPreview`, `InventoryToggle`,
-`LockController`. Wired in `main.client.luau`.
+- **both** — `players`, `PlayerStore`, `crafting`
+- **Lobby** — `constellation`, `collectables`, `asteroids`, `PlayerState`, `dustfield`,
+  `starentry`, `PrivateStarStore`, `PlantService`, `EquipService`, `devspawn`
+  (+ `lobby`, listed but with no file: it warns on every boot)
+- **Star** — `starworld`, `ChunkServer`, `BlockEditServer`, `EquipService`, `daynight`,
+  `starexit`
+- **required directly, not listed** — `WorldStore` + `LockService` (by `BlockEditServer`),
+  `StarRouting` (by `starentry` and `starworld`)
+- **orphaned** — `spawn` (superseded by `starworld`), `RegionSeed` (nothing requires it)
 
-**Data (durable + hot):** `PlayerStore` (block inventory, ProfileStore),
+**Client (`src/Client`, canonical):** wired in `main.client.luau`.
+
+- **both** — `UI`, `Prompts`, `CameraController` (owns first/third person on **T**),
+  `Music`, `ItemMirror`, `ItemInventory`, `ItemHotbar`, `HeldTools`
+- **Lobby** — `FlightController`, `FlightStun`, `DustField`, `StarRenderer`,
+  `AsteroidRenderer`, `SpaceProxies`, `MawWarning`, `UniverseField`, `ZoneWatcher`,
+  `CreatePlanetController`, `PlantingController`
+- **Star** — `StarWorld`, `ChunkClient`, `StarFly`, `BlockEdit`, `LockController`,
+  `StarExit`, plus `ClientServices.EventHandler.DayNightRenderer` (required by path,
+  since `req()` only looks in StarterPlayerScripts)
+- **libraries** — `FlightAnims` (shared flight animation state machine), `BlockPreview`,
+  `ItemDrag`, `ItemUse`
+- **graveyard** — `BlockInventory`, `Hotbar`, `InventoryRender`, `ResourceStarEntry`
+
+**Data (durable + hot):** `PlayerStore` (THE inventory — 54 unified slots holding materials, tools AND blocks; ProfileStore),
 `PrivateStarStore` (private star, ProfileStore), `RegionSeed` (MemoryStore). Schema
 in doc 15.
 
 ---
 
-## 4. The load-bearing example: the block inventory is *already correct*
+## 4. The load-bearing example: ONE server-owned inventory
 
-The block inventory is the reference implementation of the dependency rule. Copy its
-shape for every future stateful subsystem:
+`PlayerStore` is the reference implementation of the dependency rule. Copy its shape
+for every future stateful subsystem:
 
 ```
 PlayerStore (server)            Net.blink                 client
-  ProfileStore VoxlPlayer_v1      InventorySync   →   BlockInventory / Hotbar /
-  .add / .consume  ── writes ──►  (server→client)      InventoryRender  (render only)
-  syncTo() pushes full state                            EditBlock (client→server) asks;
-  after every change                                    server validates + re-syncs
+  ProfileStore VoxlPlayer_v1      ItemSync        →   ItemMirror (read-only cache)
+  54 slots: materials, tools      (server→client)      ItemInventory / ItemHotbar
+  AND blocks alike                                     (render only)
+  .giveItem/.consumeItem                               EditBlock / MoveItem / UseSlot /
+  .add/.consume (blocks)                               EquipItem (client→server) ASK;
+  syncItems() pushes full state                        server validates + re-syncs
+  after every change
 ```
+
+Blocks used to be a SECOND inventory beside this one — `Data.blocks`, its own
+`InventorySync` channel, its own client UI — and the two places disagreed about what a
+player was carrying. They are ordinary items now (`block_<id>`, doc 17), which is what
+makes this diagram the whole picture rather than half of it.
 
 One writer (server), full-state push after each change, client asks via events and
 never mutates its own counts. **No races, no desync, no "who owns this."** Doc 17

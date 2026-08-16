@@ -43,7 +43,7 @@ inventory click (Star Seed, Lobby)
 - `PlantingController` — the overlay + placement mode; owns the `PlantStar`/`PlantStarResult`
   round-trip; registers itself into `ItemUse` for the `plant_star` behavior.
 - `ItemUse` — client interaction registry (behavior key → handler). Placement items register;
-  instant items fall through to Blink `UseItem`. Keeps `ItemInventory` ignorant of planting.
+  instant items fall through to Blink `UseSlot` (server-side `ItemBehaviors`). Keeps `ItemInventory` ignorant of planting.
 
 **Server (`src/Server/systems/`)**
 - `PlantService` — the authoritative handler; re-validates and commits (see flow).

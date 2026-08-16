@@ -81,7 +81,7 @@ Weight is derived from slots + blocks. Client mirror (`ItemMirror`) reflects occ
   owned by buttonFX), grade name + weight on hover tooltip, weight bar.
 - **`ItemHotbar`** — slots 1–9; **1–9 / scroll / click** selects (when inventory closed) → equip;
   selected slot scales up + **dims its item image**; clicks become drag when inventory is open.
-- Blocks stay their own channel (`InventorySync`), Resource-place only, for now.
+- **Blocks are in the slots too** — one channel (`ItemSync`), one inventory, both places.
 
 ## Build status
 1. [x] `itemdb.kind` + Star Seed as `Tool` (`model="StarSeed"`).
@@ -101,5 +101,5 @@ Weight is derived from slots + blocks. Client mirror (`ItemMirror`) reflects occ
 9. [ ] **Design next: FX presets.** Text + border effects driven by DB metadata + named presets
    (reuse the Emitter2D approach) — an item/grade names an FX preset; a registry maps preset → the
    text effect / border animation / 2D emitter. (`UI.Effect`/`borderFX` are the current building blocks.)
-10. [ ] Polish: place-one on right-click-while-holding; unify blocks into the slot model; tune the
+10. [~] Polish: place-one on right-click-while-holding; ~~unify blocks into the slot model~~ **DONE** (blocks are items, `placesBlock`); tune the
     held-tool grip/scale in Studio.
