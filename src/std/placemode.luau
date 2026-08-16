@@ -15,7 +15,7 @@ local RESOURCE_PLACE_ID: number = 135120092161486
 
 -- In Studio, force a mode for testing (nil = use PlaceId). Flip to "ResourceStar"
 -- to boot the Forest gathering world without publishing.
-local STUDIO_OVERRIDE: Mode? = "Lobby"
+local STUDIO_OVERRIDE: Mode? = "ResourceStar"
 
 local function resolve(): Mode
 	if RunService:IsStudio() and STUDIO_OVERRIDE ~= nil then

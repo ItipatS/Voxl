@@ -16,6 +16,7 @@ local Workspace = game:GetService("Workspace")
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
 local PrebakedMap = require(ReplicatedStorage.Misc.PrebakedMap)
 local starconfig = require(ReplicatedStorage.std.starconfig)
+local constellation = require(ReplicatedStorage.std.constellation)
 
 local SPAWN_CLEARANCE = 5
 
@@ -76,7 +77,36 @@ local function positionSpawn(baked: any)
 	)
 end
 
+-- A direct or Studio join has no TeleportData, which used to mean the mapless TEST
+-- star — so pressing Play could never show you an imported world. It now falls back
+-- to a HUB instead, which is both a real destination and the thing you most want to
+-- look at. Set to nil for the old procedural TEST star.
+local STUDIO_HUB: number? = 1
+
+local function fallbackData(): any
+	local hub = if STUDIO_HUB then constellation.hub(STUDIO_HUB) else nil
+	if not hub then
+		return nil
+	end
+	local types = {}
+	for i, b in hub.biomes do
+		types[i] = b.type
+	end
+	print(`[starworld] no teleport data — falling back to hub "{hub.name}"{if hub.map then ` (baked map "{hub.map}")` else ""}`)
+	return {
+		starSeed = 1000 + hub.index,
+		starRadius = starconfig.TEST.radius,
+		starName = hub.name,
+		starTypes = types,
+		starBiomes = hub.biomes,
+		starMap = hub.map,
+	}
+end
+
 local function configure(data: any)
+	if not data then
+		data = fallbackData()
+	end
 	local seed = (data and data.starSeed) or starconfig.TEST.seed
 	local radius = (data and data.starRadius) or starconfig.TEST.radius
 	-- Prefer the full biome MIX (per-type tier) from the entry; fall back to tier-less types,
@@ -106,6 +136,26 @@ local function configure(data: any)
 	starconfig.set(seed, radius, biomes, map, if bakedMap then PrebakedMap.encodeMeta(bakedMap.meta) else nil)
 	positionSpawn(baked)
 	configured = true
+
+	-- Say out loud which world this is. "Nothing renders" has too many possible
+	-- causes to guess at from the client alone, and the first question is always
+	-- whether the server even loaded a map.
+	if bakedMap then
+		local m = bakedMap.meta
+		print(
+			`[starworld] BAKED "{m.name}": {m.nx}x{m.nz} chunks from ({m.cx0},{m.cz0}), `
+				.. `radius {m.radius}, yFloor {m.yFloor}`
+		)
+	else
+		local names = {}
+		for i, b in biomes do
+			names[i] = `{b.type}T{b.tier}`
+		end
+		print(`[starworld] PROCEDURAL seed {seed}, radius {radius}, biomes {table.concat(names, " ")}`)
+		if map then
+			warn(`[starworld] wanted baked map "{map}" but it did not load — check ServerStorage.MapData`)
+		end
+	end
 end
 
 local function onPlayer(plr: Player)

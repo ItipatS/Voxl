@@ -17,6 +17,19 @@ end
 -- locally from the seed, nothing on the wire), or a BAKED one imported from a real
 -- map (doc 23), which starts empty here and fills in as ChunkClient receives the
 -- chunks the player actually walks into.
-starconfig.applyClient(starconfig.get())
+local cfg = starconfig.get()
+local map = starconfig.applyClient(cfg)
+
+if cfg.map and not map then
+	warn(
+		`[StarWorld] star claims baked map "{cfg.map}" but the client could not build a `
+			.. `receiver — StarMapMeta was "{tostring(ReplicatedStorage:GetAttribute("StarMapMeta"))}". `
+			.. "Falling back to procedural, which will NOT match the server."
+	)
+elseif map then
+	print(`[StarWorld] baked "{map.name}", radius {map.radius}, yFloor {map.yFloor}`)
+else
+	print(`[StarWorld] procedural seed {cfg.seed}, radius {cfg.radius}`)
+end
 
 return {}

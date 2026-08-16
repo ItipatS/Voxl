@@ -69,13 +69,27 @@ Chunks.Parent = workspace
 -- that announces the chunk, and we hand it straight to the map.
 local bakedMap = WorldGen.bakedMap()
 
+-- Diagnostics. A baked star that renders nothing has several possible causes and
+-- they are indistinguishable from inside the game, so the client says what it
+-- believes: whether it has a map, how many chunks it was told to load, and how many
+-- actually carried terrain. A silent client here costs an hour of guessing.
+local fedChunks = 0
+local announcedChunks = 0
+local reported = false
+
 blink.MapChunks.On(function(payloads)
     local map = bakedMap
     if not map then
-        return -- a generated star has nothing to receive
+        if not reported then
+            reported = true
+            warn("[ChunkClient] receiving baked chunks but this client has NO baked map — "
+                .. "StarWorld fell back to procedural (StarMapMeta missing or malformed?)")
+        end
+        return
     end
     for _, entry in payloads do
         map.feed(entry.cx, entry.cz, entry.data, entry.raw)
+        fedChunks += 1
     end
 end)
 
@@ -85,6 +99,27 @@ blink.LoadChunks.On(function(payloads)
         ClientWorld[chunkKey(entry.cx, entry.cz)] = { cx = entry.cx, cz = entry.cz }
     end
     chunkcount += #payloads
+    announcedChunks += #payloads
+end)
+
+-- One-shot report a few seconds in: enough time for the stream to have started, so
+-- the numbers mean something.
+task.delay(6, function()
+    local meshed = 0
+    for _ in MeshedChunks do
+        meshed += 1
+    end
+    print(
+        `[ChunkClient] baked={bakedMap ~= nil}  announced={announcedChunks}  `
+            .. `terrain received={fedChunks}  meshed={meshed}`
+    )
+    if bakedMap and announcedChunks > 0 and fedChunks == 0 then
+        warn("[ChunkClient] the server is streaming chunk COORDS but no chunk DATA — "
+            .. "it thinks this star is procedural while the client thinks it is baked")
+    elseif meshed == 0 and announcedChunks > 0 then
+        warn("[ChunkClient] chunks arrived but none meshed — every column read as void "
+            .. "(wrong map meta, or terrain for a different part of the world)")
+    end
 end)
 
 blink.UnloadChunks.On(function(payloads)
