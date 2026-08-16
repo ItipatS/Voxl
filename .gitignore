@@ -18,3 +18,8 @@ Thumbs.db
 
 # Personal Claude Code permission grants (not shared)
 .claude/settings.local.json
+
+# Roblox Open Cloud credentials — the key goes in an env var, never a file.
+# (tools/textures/manifest.json IS committed: it's the file-hash → asset-id cache.)
+.env
+*.apikey

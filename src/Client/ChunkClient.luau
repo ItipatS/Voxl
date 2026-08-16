@@ -64,6 +64,21 @@ local Chunks = Instance.new("Folder")
 Chunks.Name = "Chunks"
 Chunks.Parent = workspace
 
+-- On a BAKED star (doc 23) terrain isn't derivable from a seed, so the server
+-- streams each chunk's compressed record. It arrives just before the LoadChunks
+-- that announces the chunk, and we hand it straight to the map.
+local bakedMap = WorldGen.bakedMap()
+
+blink.MapChunks.On(function(payloads)
+    local map = bakedMap
+    if not map then
+        return -- a generated star has nothing to receive
+    end
+    for _, entry in payloads do
+        map.feed(entry.cx, entry.cz, entry.data, entry.raw)
+    end
+end)
+
 -- Server tells us which chunks to load (coordinates only); we generate + mesh them.
 blink.LoadChunks.On(function(payloads)
     for _, entry in payloads do
@@ -83,6 +98,10 @@ blink.UnloadChunks.On(function(payloads)
         if bc then
             ChunkMesher.RecycleBlockChunk(bc)
             BlockChunks[key] = nil
+        end
+        local chunk = ClientWorld[key]
+        if chunk and bakedMap then
+            bakedMap.drop(chunk.cx, chunk.cz) -- stop holding terrain we can't see
         end
         ClientWorld[key] = nil
     end
@@ -159,6 +178,25 @@ blink.SyncDiff.On(function(list)
     end
 end)
 
+-- The mesher reads one block into each neighbouring chunk to get boundary faces
+-- right. Procedural terrain is deterministic, so a neighbour needs nothing to be
+-- "known"; a baked one has to have ARRIVED, or the chunk would mesh against
+-- non-existent terrain and grow a wall along the streaming frontier. A chunk the
+-- server announced but sent no record for is genuinely empty, and counts as known.
+local function neighboursKnown(cx: number, cz: number): boolean
+    if not bakedMap then
+        return true
+    end
+    for dz = -1, 1 do
+        for dx = -1, 1 do
+            if not ClientWorld[chunkKey(cx + dx, cz + dz)] then
+                return false
+            end
+        end
+    end
+    return true
+end
+
 local candidates = {} -- reused each frame: unmeshed chunks to build
 
 local function distToPlayer(key: string, pcx: number, pcz: number): number
@@ -217,7 +255,8 @@ RunService.RenderStepped:Connect(function()
     for dz = -NEAR_RADIUS, NEAR_RADIUS do
         for dx = -NEAR_RADIUS, NEAR_RADIUS do
             local key = chunkKey(pcx + dx, pcz + dz)
-            if ClientWorld[key] and not MeshedChunks[key] and not BlockChunks[key] then
+            if ClientWorld[key] and not MeshedChunks[key] and not BlockChunks[key]
+                and neighboursKnown(pcx + dx, pcz + dz) then
                 candidates[#candidates + 1] = { key = key, d = dx * dx + dz * dz }
             end
         end
@@ -250,10 +289,17 @@ end)
 -- deterministic, so we know the exact ground height with zero data transfer.
 local SPAWN_CLEARANCE = 5 -- studs above the surface block's top face
 
-local function surfaceCFrameAt(x: number, z: number): CFrame
+-- Ground CFrame at an XZ, or nil if we don't know yet. On a baked star the local
+-- column is only known once its chunk has streamed in, and guessing would drop the
+-- player at y=0 under the island; the server already spawned them in the right
+-- place, so "don't know" means "don't move".
+local function surfaceCFrameAt(x: number, z: number): CFrame?
     local wx = math.floor(x / WorldGen.BLOCK_SIZE)
     local wz = math.floor(z / WorldGen.BLOCK_SIZE)
     local surfaceY = WorldGen.getSurfaceHeight(wx, wz)
+    if surfaceY < 0 then
+        return nil
+    end
     local topY = (surfaceY + 1) * WorldGen.BLOCK_SIZE
     return CFrame.new(x, topY + SPAWN_CLEARANCE, z)
 end
@@ -264,7 +310,10 @@ local function setupSpawn(char: Model)
     -- Place on the ground immediately (deterministic) and freeze so we never
     -- fall through terrain that hasn't meshed yet.
     root.Anchored = true
-    root.CFrame = surfaceCFrameAt(root.Position.X, root.Position.Z)
+    local seat = surfaceCFrameAt(root.Position.X, root.Position.Z)
+    if seat then
+        root.CFrame = seat
+    end
 
     task.spawn(function()
         local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
@@ -278,7 +327,10 @@ local function setupSpawn(char: Model)
 
         -- Re-seat on the exact surface (in case the spawn XZ moved) and release.
         if root.Parent then
-            root.CFrame = surfaceCFrameAt(root.Position.X, root.Position.Z)
+            local ground = surfaceCFrameAt(root.Position.X, root.Position.Z)
+            if ground then
+                root.CFrame = ground
+            end
             task.wait()
             root.Anchored = false
         end

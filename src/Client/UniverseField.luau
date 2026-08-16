@@ -11,11 +11,52 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
+local TeleportService = game:GetService("TeleportService")
 
-local universe = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("universe"))
-local blink = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("ClientNet"))
+local std = ReplicatedStorage:WaitForChild("std")
+local universe = require(std:WaitForChild("universe"))
+local blink = require(std:WaitForChild("ClientNet"))
+local transition = require(std:WaitForChild("transition"))
 
 local player = Players.LocalPlayer
+
+-- One trip in flight at a time. On Enter we optimistically close the cartoon iris + queue the
+-- teleport loading GUI; if the server denies (no star / too far / teleport failed — Studio can't
+-- cross places) or nothing happens in time, we reverse the iris so the screen never stays black.
+local traveling = false
+local TRAVEL_TIMEOUT = 12 -- s backstop if no teleport and no explicit denial arrives
+
+local function beginTravel(star: universe.Star)
+	if traveling then
+		return
+	end
+	traveling = true
+	local info = {
+		name = star.name,
+		types = star.types,
+		subtitle = "Traveling…",
+		primary = star.types[1],
+	}
+	pcall(function()
+		TeleportService:SetTeleportGui(transition.buildTeleportGui(info))
+	end)
+	transition.close(info)
+	blink.EnterStar.Fire({ cx = star.slot[1], cy = star.slot[2], cz = star.slot[3] })
+	task.delay(TRAVEL_TIMEOUT, function()
+		if traveling then
+			traveling = false
+			transition.open()
+		end
+	end)
+end
+
+blink.EnterDenied.On(function()
+	if not traveling then
+		return
+	end
+	traveling = false
+	transition.open()
+end)
 
 local RENDER_CELLS = 2 -- slots each way (±2 → 5³ = 125 slots, ~44 stars) [TUNE]
 local STAR_SIZE = 2047 -- planet diameter = the max part size (a bounded world; interior TBD)
@@ -153,7 +194,7 @@ local function makeStar(star: universe.Star): Instance
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = part
 	prompt.Triggered:Connect(function()
-		blink.EnterStar.Fire({ cx = star.slot[1], cy = star.slot[2], cz = star.slot[3] })
+		beginTravel(star)
 	end)
 
 	root.Parent = folder

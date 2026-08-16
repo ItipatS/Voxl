@@ -51,6 +51,8 @@ The design lineage, and the *one load-bearing idea* stolen from each:
 | `.claude/20-items-hotbar-tools.md` | Item `kind` (Tool/Consumable/Material), hotbar equip → server-spawned held Tool + particle LOD, activation → behavior |
 | `.claude/21-biomes-and-worldgen.md` | **Biome canon — 5 resource types × 5-tier ladders = 25 biomes, what a TIER means, bounded-star worldgen (reuse `WorldGen`), resource nodes as special meshes** |
 | `.claude/22-crafting-and-stations.md` | **Crafting canon — 3×3 pattern table + time-based stations (furnace/sawmill/crusher/…) + factories; raw→refined→product flow; the tier recipe ladder (what unlocks when)** |
+| `.claude/23-imported-maps.md` | **Baked worlds — importing a real Minecraft save as a LANDMARK star (`tools/mcimport`, VXM3 format, server-only + per-chunk streaming, the builder block set, `WorldGen.applyPrebaked`)** |
+| `.claude/23a-block-coverage.md` | Generated block inventory for the imported map: which Voxl blocks it needs, what's dropped and whether that matters. Regenerate with `tools/mcimport/inventory.js` |
 
 ## Decision status convention
 
@@ -93,6 +95,11 @@ tool work you can do yourself.
   - **FORBIDDEN — never playtest:** `start_stop_play`, `user_keyboard_input`, `user_mouse_input`.
     Playtesting is a human job ([[no-playtest-inspect-instead]]). Inspect the running/edit state
     read-only; never drive the game.
+- **Roblox Open Cloud** — `tools/textures/upload.js` uploads block textures and generates
+  `src/Misc/BlockTextures.luau` (block → per-face asset ids). Auth is an **API key** in
+  `ROBLOX_API_KEY` (`x-api-key` header), *not* OAuth. Note Open Cloud has **no endpoint
+  that lists assets you own** — ids come from the upload, cached in `tools/textures/manifest.json`.
+  See `tools/textures/README.md`.
 - **Linear MCP** — the MAIN team's Voxlstar project (M1–M10 board). Reconcile plan/progress here.
 - **Git / `gh`** — standard; commit/push only when asked (see repo rules).
 

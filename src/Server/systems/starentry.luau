@@ -26,23 +26,45 @@ local function rootPos(plr: Player): Vector3?
 	return nil
 end
 
+-- EnterDenied reason codes (must match the client's iris re-open; the code is informational).
+local DENY_NO_STAR = 0
+local DENY_TOO_FAR = 1
+local DENY_TELEPORT = 2
+
 blink.EnterStar.On(function(plr: Player, slot)
 	local star = universe.starAt(slot.cx, slot.cy, slot.cz, universe.currentWeek(os.time()))
 	if not star then
-		return -- no star in that slot this week → ignore (anti-cheat)
+		blink.EnterDenied.Fire(plr, DENY_NO_STAR) -- no star in that slot this week (anti-cheat)
+		return
 	end
 	local pp = rootPos(plr)
 	if not pp or (star.pos - pp).Magnitude > ENTER_RADIUS then
-		return -- not actually near it
+		blink.EnterDenied.Fire(plr, DENY_TOO_FAR) -- not actually near it
+		return
 	end
 
 	local opts = Instance.new("TeleportOptions")
-	opts:SetTeleportData({ starSeed = star.seed, starRadius = STAR_WORLD_RADIUS, starTypes = star.types })
+	-- Carry the full biome MIX (per-type tier) so the star world generates the exact rolled
+	-- ladder rungs, not a tier-less approximation. starName drives the loading card; starTypes
+	-- kept for older-client tolerance.
+	-- A LANDMARK star (doc 23) carries a baked world: `starMap` names it and the star's
+	-- own radius wins, since an imported map's footprint isn't ours to choose.
+	opts:SetTeleportData({
+		starSeed = star.seed,
+		starRadius = star.radius or STAR_WORLD_RADIUS,
+		starName = star.name,
+		starTypes = star.types,
+		starBiomes = star.biomes,
+		starMap = star.map,
+	})
 	local ok, err = pcall(function()
 		TeleportService:TeleportAsync(placemode.RESOURCE_PLACE_ID, { plr }, opts)
 	end)
 	if not ok then
+		-- Cross-place teleport can't complete in Studio / an unpublished place — tell the client
+		-- so it reverses the iris instead of sitting on a black screen.
 		warn(`[starentry] teleport for {plr.Name} failed (Studio/unpublished?): {err}`)
+		blink.EnterDenied.Fire(plr, DENY_TELEPORT)
 	end
 end)
 

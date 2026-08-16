@@ -20,6 +20,30 @@ event UnloadChunks {
     Data: string[]
 }
 
+-- One chunk of a BAKED star world (doc 23). Procedural terrain needs no data at
+-- all — the client derives it from the seed — but an imported map is not derivable,
+-- and shipping the whole thing to every client (in both places) is exactly what we
+-- refuse to do. So the server keeps the map in ServerStorage and forwards single
+-- chunk records, still DEFLATE'd, as players walk: ~540 bytes each, and a client
+-- only ever receives the chunks it actually visits.
+--
+-- `raw` is the record's decompressed size, so the client can size the inflate
+-- output up front. Sent immediately BEFORE the matching LoadChunks so the data is
+-- always there by the time a chunk is meshed.
+struct MapChunk {
+    cx: i16,
+    cz: i16,
+    raw: u16,
+    data: buffer
+}
+
+event MapChunks {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: MapChunk[]
+}
+
 -- A single block change: block 0 = broken (air), else the placed block id.
 struct BlockEdit {
     wx: i32,
@@ -286,6 +310,16 @@ event EnterStar {
     Type: Reliable,
     Call: SingleSync,
     Data: StarSlot
+}
+
+--- Server tells the entering client the trip is NOT happening (no star this week, too far,
+--- or the teleport call failed — e.g. Studio/unpublished). The client reverses its iris
+--- transition + clears the queued teleport GUI so the screen doesn't stay black.
+event EnterDenied {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u8
 }
 
 -- ---- Player runtime state (server-authoritative; client predicts + reconciles) ---

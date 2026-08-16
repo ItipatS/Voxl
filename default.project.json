@@ -22,11 +22,17 @@
         "$path": "src/std"
       }
     },
+    "ReplicatedFirst": {
+      "$path": "src/ReplicatedFirst"
+    },
     "ServerScriptService": {
       "$path": "src/Server",
       "DevPackages": {
         "$path": "DevPackages"
       }
+    },
+    "ServerStorage": {
+      "$path": "src/ServerStorage"
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {

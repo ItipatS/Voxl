@@ -162,20 +162,23 @@ local SerdesEvent = "?"
 local SerdesThread: thread?
 Queue.Reliable[0] = table.create(256)
 Queue.Reliable[1] = table.create(256)
-Queue.Reliable[3] = table.create(256)
+Queue.Reliable[2] = table.create(256)
 Queue.Reliable[4] = table.create(256)
 Queue.Reliable[5] = table.create(256)
+Queue.Reliable[6] = table.create(256)
 Queue.Unreliable[0] = table.create(256)
-Queue.Reliable[7] = table.create(256)
-Queue.Reliable[9] = table.create(256)
+Queue.Reliable[8] = table.create(256)
 Queue.Reliable[10] = table.create(256)
-Queue.Reliable[14] = table.create(256)
-Queue.Unreliable[1] = table.create(256)
+Queue.Reliable[11] = table.create(256)
 Queue.Reliable[15] = table.create(256)
+Queue.Unreliable[1] = table.create(256)
 Queue.Reliable[16] = table.create(256)
-Queue.Reliable[18] = table.create(256)
+Queue.Reliable[17] = table.create(256)
+Queue.Reliable[19] = table.create(256)
+Queue.Reliable[21] = table.create(256)
 Queue.Unreliable[2] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
+export type MapChunk = { cx: number, cz: number, raw: number, data: buffer }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
 export type BlockCount = { block: number, count: number }
 export type StarState = { id: number, dp: Vector3 }
@@ -238,10 +241,46 @@ function SerdesFunctions.ReadEVENT_UnloadChunks(): ({ string })
 	return Value
 end
 
+function SerdesFunctions.ReadEVENT_MapChunks(): ({ { cx: number, cz: number, raw: number, data: buffer } })
+	-- Read BLOCK: 2 bytes
+	local BLOCK_START = Read(2)
+	-- START ARRAY
+	local Length = buffer.readu16(RecieveBuffer, BLOCK_START + 0)
+	if Length < 0 then error(`Expected "Length" to be larger than 0, got {Length} instead.`) end
+	if Length > 65535 then error(`Expected "Length" to be smaller than 65535, got {Length} instead.`) end
+	local Value = table.create(Length)
+		-- Read BLOCK: 8 bytes
+	local ARRAY_START_1 = Read(8 * Length)
+	for Index = 1, Length do
+		local Item_1 = {} :: any
+		-- Read 2
+		local OPERATION_OFFSET_0 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		Item_1.cx = buffer.readi16(RecieveBuffer, OPERATION_OFFSET_0)
+		-- Read 2
+		local OPERATION_OFFSET_1 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		Item_1.cz = buffer.readi16(RecieveBuffer, OPERATION_OFFSET_1)
+		-- Read 2
+		local OPERATION_OFFSET_2 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		Item_1.raw = buffer.readu16(RecieveBuffer, OPERATION_OFFSET_2)
+		-- Read 2
+		local OPERATION_OFFSET_3 = ARRAY_START_1
+		ARRAY_START_1 += 2
+		Length = buffer.readu16(RecieveBuffer, OPERATION_OFFSET_3)
+		Item_1.data = buffer.create(Length)
+		buffer.copy(Item_1.data, 0, RecieveBuffer, Read(Length), Length)
+		table.insert(Value, Item_1)
+	end
+	-- END ARRAY
+	return Value
+end
+
 function SerdesFunctions.WriteEVENT_EditBlock(Value: { wx: number, y: number, wz: number, block: number }): ()
 	-- Allocate BLOCK: 14 bytes
 	local BLOCK_START = Allocate(14)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 2)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 3)
 	buffer.writei32(SendBuffer, BLOCK_START + 1, Value.wx)
 	buffer.writei32(SendBuffer, BLOCK_START + 5, Value.y)
 	buffer.writei32(SendBuffer, BLOCK_START + 9, Value.wz)
@@ -345,7 +384,7 @@ end
 function SerdesFunctions.WriteEVENT_PlaceLock(Value: nil): ()
 	-- Allocate BLOCK: 1 bytes
 	local BLOCK_START = Allocate(1)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 6)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 7)
 end
 
 function SerdesFunctions.ReadEVENT_StarStream(): ({ { id: number, dp: Vector3 } })
@@ -407,7 +446,7 @@ end
 function SerdesFunctions.WriteEVENT_StarCatch(Value: number): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 8)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 9)
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Value)
 end
 
@@ -454,7 +493,7 @@ end
 function SerdesFunctions.WriteEVENT_MoveItem(Value: { from: number, to: number }): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 11)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 12)
 	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value.from)
 	buffer.writeu8(SendBuffer, BLOCK_START + 2, Value.to)
 end
@@ -462,14 +501,14 @@ end
 function SerdesFunctions.WriteEVENT_UseSlot(Value: number): ()
 	-- Allocate BLOCK: 2 bytes
 	local BLOCK_START = Allocate(2)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 12)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 13)
 	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value)
 end
 
 function SerdesFunctions.WriteEVENT_PlantStar(Value: { name: string, cx: number, cz: number }): ()
 	-- Allocate BLOCK: 7 bytes
 	local BLOCK_START = Allocate(7)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 13)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 14)
 	local Length = #Value.name
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Length)
 	Allocate(Length)
@@ -580,7 +619,7 @@ end
 function SerdesFunctions.WriteEVENT_DustCollect(Value: { cx: number, cy: number, cz: number, idx: number }): ()
 	-- Allocate BLOCK: 8 bytes
 	local BLOCK_START = Allocate(8)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 17)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 18)
 	buffer.writei16(SendBuffer, BLOCK_START + 1, Value.cx)
 	buffer.writei16(SendBuffer, BLOCK_START + 3, Value.cy)
 	buffer.writei16(SendBuffer, BLOCK_START + 5, Value.cz)
@@ -629,10 +668,17 @@ end
 function SerdesFunctions.WriteEVENT_EnterStar(Value: { cx: number, cy: number, cz: number }): ()
 	-- Allocate BLOCK: 7 bytes
 	local BLOCK_START = Allocate(7)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 19)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 20)
 	buffer.writei16(SendBuffer, BLOCK_START + 1, Value.cx)
 	buffer.writei16(SendBuffer, BLOCK_START + 3, Value.cy)
 	buffer.writei16(SendBuffer, BLOCK_START + 5, Value.cz)
+end
+
+function SerdesFunctions.ReadEVENT_EnterDenied(): (number)
+	-- Read BLOCK: 1 bytes
+	local BLOCK_START = Read(1)
+	local Value = buffer.readu8(RecieveBuffer, BLOCK_START + 0)
+	return Value
 end
 
 function SerdesFunctions.ReadEVENT_PlayerStateSync(): ({ fuel: number })
@@ -646,14 +692,14 @@ end
 function SerdesFunctions.WriteEVENT_BoostState(Value: boolean): ()
 	-- Allocate BLOCK: 2 bytes
 	local BLOCK_START = Allocate(2)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 20)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 22)
 	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value and 1 or 0)
 end
 
 function SerdesFunctions.WriteEVENT_Craft(Value: string): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 21)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 23)
 	local Length = #Value
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Length)
 	Allocate(Length)
@@ -663,7 +709,7 @@ end
 function SerdesFunctions.WriteEVENT_EquipItem(Value: number): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 22)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 24)
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Value)
 end
 
@@ -674,6 +720,9 @@ if not RunService:IsRunning() then
 		On = NOOP
 	},
 	UnloadChunks = {
+		On = NOOP
+	},
+	MapChunks = {
 		On = NOOP
 	},
 	EditBlock = {
@@ -735,6 +784,9 @@ if not RunService:IsRunning() then
 	},
 	EnterStar = {
 		Fire = NOOP
+	},
+	EnterDenied = {
+		On = NOOP
 	},
 	PlayerStateSync = {
 		On = NOOP
@@ -812,115 +864,137 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 				end
 				table.insert(Queue.Reliable[1], {Value} :: {any})
 			end
-		elseif Index == 3 then
-			local Value: { { wx: number, y: number, wz: number, block: number } } = SerdesFunctions.ReadEVENT_BlockEdited()
-			if Events.Reliable[3] ~= nil then
-				SerdesEvent = "BlockEdited"
-				Events.Reliable[3](Value)
+		elseif Index == 2 then
+			local Value: { { cx: number, cz: number, raw: number, data: buffer } } = SerdesFunctions.ReadEVENT_MapChunks()
+			if Events.Reliable[2] ~= nil then
+				SerdesEvent = "MapChunks"
+				Events.Reliable[2](Value)
 			else
-				if #Queue.Reliable[3] > 256 then
-					warn("[Blink]: Event queue of \"BlockEdited\" exceeded 256, did you forget to implement a listener?")
+				if #Queue.Reliable[2] > 256 then
+					warn("[Blink]: Event queue of \"MapChunks\" exceeded 256, did you forget to implement a listener?")
 				end
-				table.insert(Queue.Reliable[3], {Value} :: {any})
+				table.insert(Queue.Reliable[2], {Value} :: {any})
 			end
 		elseif Index == 4 then
-			local Value: { { wx: number, y: number, wz: number, block: number } } = SerdesFunctions.ReadEVENT_SyncDiff()
+			local Value: { { wx: number, y: number, wz: number, block: number } } = SerdesFunctions.ReadEVENT_BlockEdited()
 			if Events.Reliable[4] ~= nil then
-				SerdesEvent = "SyncDiff"
+				SerdesEvent = "BlockEdited"
 				Events.Reliable[4](Value)
 			else
 				if #Queue.Reliable[4] > 256 then
-					warn("[Blink]: Event queue of \"SyncDiff\" exceeded 256, did you forget to implement a listener?")
+					warn("[Blink]: Event queue of \"BlockEdited\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[4], {Value} :: {any})
 			end
 		elseif Index == 5 then
-			local Value: { { block: number, count: number } } = SerdesFunctions.ReadEVENT_InventorySync()
+			local Value: { { wx: number, y: number, wz: number, block: number } } = SerdesFunctions.ReadEVENT_SyncDiff()
 			if Events.Reliable[5] ~= nil then
-				SerdesEvent = "InventorySync"
+				SerdesEvent = "SyncDiff"
 				Events.Reliable[5](Value)
 			else
 				if #Queue.Reliable[5] > 256 then
-					warn("[Blink]: Event queue of \"InventorySync\" exceeded 256, did you forget to implement a listener?")
+					warn("[Blink]: Event queue of \"SyncDiff\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[5], {Value} :: {any})
 			end
-		elseif Index == 7 then
-			local Value: { number } = SerdesFunctions.ReadEVENT_StarUnload()
-			if Events.Reliable[7] ~= nil then
-				SerdesEvent = "StarUnload"
-				Events.Reliable[7](Value)
+		elseif Index == 6 then
+			local Value: { { block: number, count: number } } = SerdesFunctions.ReadEVENT_InventorySync()
+			if Events.Reliable[6] ~= nil then
+				SerdesEvent = "InventorySync"
+				Events.Reliable[6](Value)
 			else
-				if #Queue.Reliable[7] > 256 then
+				if #Queue.Reliable[6] > 256 then
+					warn("[Blink]: Event queue of \"InventorySync\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[6], {Value} :: {any})
+			end
+		elseif Index == 8 then
+			local Value: { number } = SerdesFunctions.ReadEVENT_StarUnload()
+			if Events.Reliable[8] ~= nil then
+				SerdesEvent = "StarUnload"
+				Events.Reliable[8](Value)
+			else
+				if #Queue.Reliable[8] > 256 then
 					warn("[Blink]: Event queue of \"StarUnload\" exceeded 256, did you forget to implement a listener?")
 				end
-				table.insert(Queue.Reliable[7], {Value} :: {any})
-			end
-		elseif Index == 9 then
-			local Value: number = SerdesFunctions.ReadEVENT_StarCaught()
-			if Events.Reliable[9] ~= nil then
-				SerdesEvent = "StarCaught"
-				Events.Reliable[9](Value)
-			else
-				if #Queue.Reliable[9] > 256 then
-					warn("[Blink]: Event queue of \"StarCaught\" exceeded 256, did you forget to implement a listener?")
-				end
-				table.insert(Queue.Reliable[9], {Value} :: {any})
+				table.insert(Queue.Reliable[8], {Value} :: {any})
 			end
 		elseif Index == 10 then
-			local Value: { weight: number, capacity: number, slots: { { slot: number, item: number, count: number } } } = SerdesFunctions.ReadEVENT_ItemSync()
+			local Value: number = SerdesFunctions.ReadEVENT_StarCaught()
 			if Events.Reliable[10] ~= nil then
-				SerdesEvent = "ItemSync"
+				SerdesEvent = "StarCaught"
 				Events.Reliable[10](Value)
 			else
 				if #Queue.Reliable[10] > 256 then
-					warn("[Blink]: Event queue of \"ItemSync\" exceeded 256, did you forget to implement a listener?")
+					warn("[Blink]: Event queue of \"StarCaught\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[10], {Value} :: {any})
 			end
-		elseif Index == 14 then
-			local Value: { ok: boolean, reason: string } = SerdesFunctions.ReadEVENT_PlantStarResult()
-			if Events.Reliable[14] ~= nil then
-				SerdesEvent = "PlantStarResult"
-				Events.Reliable[14](Value)
+		elseif Index == 11 then
+			local Value: { weight: number, capacity: number, slots: { { slot: number, item: number, count: number } } } = SerdesFunctions.ReadEVENT_ItemSync()
+			if Events.Reliable[11] ~= nil then
+				SerdesEvent = "ItemSync"
+				Events.Reliable[11](Value)
 			else
-				if #Queue.Reliable[14] > 256 then
-					warn("[Blink]: Event queue of \"PlantStarResult\" exceeded 256, did you forget to implement a listener?")
+				if #Queue.Reliable[11] > 256 then
+					warn("[Blink]: Event queue of \"ItemSync\" exceeded 256, did you forget to implement a listener?")
 				end
-				table.insert(Queue.Reliable[14], {Value} :: {any})
+				table.insert(Queue.Reliable[11], {Value} :: {any})
 			end
 		elseif Index == 15 then
-			local Value: { number } = SerdesFunctions.ReadEVENT_AsteroidUnload()
+			local Value: { ok: boolean, reason: string } = SerdesFunctions.ReadEVENT_PlantStarResult()
 			if Events.Reliable[15] ~= nil then
-				SerdesEvent = "AsteroidUnload"
+				SerdesEvent = "PlantStarResult"
 				Events.Reliable[15](Value)
 			else
 				if #Queue.Reliable[15] > 256 then
-					warn("[Blink]: Event queue of \"AsteroidUnload\" exceeded 256, did you forget to implement a listener?")
+					warn("[Blink]: Event queue of \"PlantStarResult\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[15], {Value} :: {any})
 			end
 		elseif Index == 16 then
-			local Value: { dir: Vector3, stun: number } = SerdesFunctions.ReadEVENT_AsteroidHit()
+			local Value: { number } = SerdesFunctions.ReadEVENT_AsteroidUnload()
 			if Events.Reliable[16] ~= nil then
-				SerdesEvent = "AsteroidHit"
+				SerdesEvent = "AsteroidUnload"
 				Events.Reliable[16](Value)
 			else
 				if #Queue.Reliable[16] > 256 then
-					warn("[Blink]: Event queue of \"AsteroidHit\" exceeded 256, did you forget to implement a listener?")
+					warn("[Blink]: Event queue of \"AsteroidUnload\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[16], {Value} :: {any})
 			end
-		elseif Index == 18 then
-			local Value: { { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } } = SerdesFunctions.ReadEVENT_DustCooldown()
-			if Events.Reliable[18] ~= nil then
-				SerdesEvent = "DustCooldown"
-				Events.Reliable[18](Value)
+		elseif Index == 17 then
+			local Value: { dir: Vector3, stun: number } = SerdesFunctions.ReadEVENT_AsteroidHit()
+			if Events.Reliable[17] ~= nil then
+				SerdesEvent = "AsteroidHit"
+				Events.Reliable[17](Value)
 			else
-				if #Queue.Reliable[18] > 256 then
+				if #Queue.Reliable[17] > 256 then
+					warn("[Blink]: Event queue of \"AsteroidHit\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[17], {Value} :: {any})
+			end
+		elseif Index == 19 then
+			local Value: { { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } } = SerdesFunctions.ReadEVENT_DustCooldown()
+			if Events.Reliable[19] ~= nil then
+				SerdesEvent = "DustCooldown"
+				Events.Reliable[19](Value)
+			else
+				if #Queue.Reliable[19] > 256 then
 					warn("[Blink]: Event queue of \"DustCooldown\" exceeded 256, did you forget to implement a listener?")
 				end
-				table.insert(Queue.Reliable[18], {Value} :: {any})
+				table.insert(Queue.Reliable[19], {Value} :: {any})
+			end
+		elseif Index == 21 then
+			local Value: number = SerdesFunctions.ReadEVENT_EnterDenied()
+			if Events.Reliable[21] ~= nil then
+				SerdesEvent = "EnterDenied"
+				Events.Reliable[21](Value)
+			else
+				if #Queue.Reliable[21] > 256 then
+					warn("[Blink]: Event queue of \"EnterDenied\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[21], {Value} :: {any})
 			end
 		end
 	end
@@ -994,26 +1068,26 @@ local Returns = table.freeze({
 			end
 		end
 	},
+	MapChunks = {
+		On = function(Listener: (Value: { { cx: number, cz: number, raw: number, data: buffer } }) -> ()): () -> ()
+			Events.Reliable[2] = Listener
+			for Index, Arguments in Queue.Reliable[2] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[2] = {}
+			return function (): ()
+				if Events.Reliable[2] == Listener then
+					Events.Reliable[2] = nil
+				end
+			end
+		end
+	},
 	EditBlock = {
 		Fire = function(Value: { wx: number, y: number, wz: number, block: number }): ()
 			SerdesFunctions.WriteEVENT_EditBlock(Value)
 		end
 	},
 	BlockEdited = {
-		On = function(Listener: (Value: { { wx: number, y: number, wz: number, block: number } }) -> ()): () -> ()
-			Events.Reliable[3] = Listener
-			for Index, Arguments in Queue.Reliable[3] do
-				Listener(table.unpack(Arguments))
-			end
-			Queue.Reliable[3] = {}
-			return function (): ()
-				if Events.Reliable[3] == Listener then
-					Events.Reliable[3] = nil
-				end
-			end
-		end
-	},
-	SyncDiff = {
 		On = function(Listener: (Value: { { wx: number, y: number, wz: number, block: number } }) -> ()): () -> ()
 			Events.Reliable[4] = Listener
 			for Index, Arguments in Queue.Reliable[4] do
@@ -1027,8 +1101,8 @@ local Returns = table.freeze({
 			end
 		end
 	},
-	InventorySync = {
-		On = function(Listener: (Value: { { block: number, count: number } }) -> ()): () -> ()
+	SyncDiff = {
+		On = function(Listener: (Value: { { wx: number, y: number, wz: number, block: number } }) -> ()): () -> ()
 			Events.Reliable[5] = Listener
 			for Index, Arguments in Queue.Reliable[5] do
 				Listener(table.unpack(Arguments))
@@ -1037,6 +1111,20 @@ local Returns = table.freeze({
 			return function (): ()
 				if Events.Reliable[5] == Listener then
 					Events.Reliable[5] = nil
+				end
+			end
+		end
+	},
+	InventorySync = {
+		On = function(Listener: (Value: { { block: number, count: number } }) -> ()): () -> ()
+			Events.Reliable[6] = Listener
+			for Index, Arguments in Queue.Reliable[6] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[6] = {}
+			return function (): ()
+				if Events.Reliable[6] == Listener then
+					Events.Reliable[6] = nil
 				end
 			end
 		end
@@ -1058,14 +1146,14 @@ local Returns = table.freeze({
 	},
 	StarUnload = {
 		On = function(Listener: (Value: { number }) -> ()): () -> ()
-			Events.Reliable[7] = Listener
-			for Index, Arguments in Queue.Reliable[7] do
+			Events.Reliable[8] = Listener
+			for Index, Arguments in Queue.Reliable[8] do
 				Listener(table.unpack(Arguments))
 			end
-			Queue.Reliable[7] = {}
+			Queue.Reliable[8] = {}
 			return function (): ()
-				if Events.Reliable[7] == Listener then
-					Events.Reliable[7] = nil
+				if Events.Reliable[8] == Listener then
+					Events.Reliable[8] = nil
 				end
 			end
 		end
@@ -1077,20 +1165,6 @@ local Returns = table.freeze({
 	},
 	StarCaught = {
 		On = function(Listener: (Value: number) -> ()): () -> ()
-			Events.Reliable[9] = Listener
-			for Index, Arguments in Queue.Reliable[9] do
-				Listener(table.unpack(Arguments))
-			end
-			Queue.Reliable[9] = {}
-			return function (): ()
-				if Events.Reliable[9] == Listener then
-					Events.Reliable[9] = nil
-				end
-			end
-		end
-	},
-	ItemSync = {
-		On = function(Listener: (Value: { weight: number, capacity: number, slots: { { slot: number, item: number, count: number } } }) -> ()): () -> ()
 			Events.Reliable[10] = Listener
 			for Index, Arguments in Queue.Reliable[10] do
 				Listener(table.unpack(Arguments))
@@ -1099,6 +1173,20 @@ local Returns = table.freeze({
 			return function (): ()
 				if Events.Reliable[10] == Listener then
 					Events.Reliable[10] = nil
+				end
+			end
+		end
+	},
+	ItemSync = {
+		On = function(Listener: (Value: { weight: number, capacity: number, slots: { { slot: number, item: number, count: number } } }) -> ()): () -> ()
+			Events.Reliable[11] = Listener
+			for Index, Arguments in Queue.Reliable[11] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[11] = {}
+			return function (): ()
+				if Events.Reliable[11] == Listener then
+					Events.Reliable[11] = nil
 				end
 			end
 		end
@@ -1120,14 +1208,14 @@ local Returns = table.freeze({
 	},
 	PlantStarResult = {
 		On = function(Listener: (Value: { ok: boolean, reason: string }) -> ()): () -> ()
-			Events.Reliable[14] = Listener
-			for Index, Arguments in Queue.Reliable[14] do
+			Events.Reliable[15] = Listener
+			for Index, Arguments in Queue.Reliable[15] do
 				Listener(table.unpack(Arguments))
 			end
-			Queue.Reliable[14] = {}
+			Queue.Reliable[15] = {}
 			return function (): ()
-				if Events.Reliable[14] == Listener then
-					Events.Reliable[14] = nil
+				if Events.Reliable[15] == Listener then
+					Events.Reliable[15] = nil
 				end
 			end
 		end
@@ -1144,20 +1232,6 @@ local Returns = table.freeze({
 	},
 	AsteroidUnload = {
 		On = function(Listener: (Value: { number }) -> ()): () -> ()
-			Events.Reliable[15] = Listener
-			for Index, Arguments in Queue.Reliable[15] do
-				Listener(table.unpack(Arguments))
-			end
-			Queue.Reliable[15] = {}
-			return function (): ()
-				if Events.Reliable[15] == Listener then
-					Events.Reliable[15] = nil
-				end
-			end
-		end
-	},
-	AsteroidHit = {
-		On = function(Listener: (Value: { dir: Vector3, stun: number }) -> ()): () -> ()
 			Events.Reliable[16] = Listener
 			for Index, Arguments in Queue.Reliable[16] do
 				Listener(table.unpack(Arguments))
@@ -1170,6 +1244,20 @@ local Returns = table.freeze({
 			end
 		end
 	},
+	AsteroidHit = {
+		On = function(Listener: (Value: { dir: Vector3, stun: number }) -> ()): () -> ()
+			Events.Reliable[17] = Listener
+			for Index, Arguments in Queue.Reliable[17] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[17] = {}
+			return function (): ()
+				if Events.Reliable[17] == Listener then
+					Events.Reliable[17] = nil
+				end
+			end
+		end
+	},
 	DustCollect = {
 		Fire = function(Value: { cx: number, cy: number, cz: number, idx: number }): ()
 			SerdesFunctions.WriteEVENT_DustCollect(Value)
@@ -1177,14 +1265,14 @@ local Returns = table.freeze({
 	},
 	DustCooldown = {
 		On = function(Listener: (Value: { { ref: { cx: number, cy: number, cz: number, idx: number }, remaining: number } }) -> ()): () -> ()
-			Events.Reliable[18] = Listener
-			for Index, Arguments in Queue.Reliable[18] do
+			Events.Reliable[19] = Listener
+			for Index, Arguments in Queue.Reliable[19] do
 				Listener(table.unpack(Arguments))
 			end
-			Queue.Reliable[18] = {}
+			Queue.Reliable[19] = {}
 			return function (): ()
-				if Events.Reliable[18] == Listener then
-					Events.Reliable[18] = nil
+				if Events.Reliable[19] == Listener then
+					Events.Reliable[19] = nil
 				end
 			end
 		end
@@ -1192,6 +1280,20 @@ local Returns = table.freeze({
 	EnterStar = {
 		Fire = function(Value: { cx: number, cy: number, cz: number }): ()
 			SerdesFunctions.WriteEVENT_EnterStar(Value)
+		end
+	},
+	EnterDenied = {
+		On = function(Listener: (Value: number) -> ()): () -> ()
+			Events.Reliable[21] = Listener
+			for Index, Arguments in Queue.Reliable[21] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[21] = {}
+			return function (): ()
+				if Events.Reliable[21] == Listener then
+					Events.Reliable[21] = nil
+				end
+			end
 		end
 	},
 	PlayerStateSync = {

@@ -5,7 +5,6 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
 local starconfig = require(ReplicatedStorage:WaitForChild("std"):WaitForChild("starconfig"))
 
 -- Wait briefly for the server to publish the star config (else fall back to the TEST star).
@@ -14,7 +13,10 @@ while ReplicatedStorage:GetAttribute("StarSeed") == nil and os.clock() - t0 < 3 
 	task.wait(0.05)
 end
 
-local cfg = starconfig.get()
-WorldGen.applyStarByTypes(cfg.seed, cfg.radius, cfg.types)
+-- One call covers both worlds a star can be: a rolled procedural island (derived
+-- locally from the seed, nothing on the wire), or a BAKED one imported from a real
+-- map (doc 23), which starts empty here and fills in as ChunkClient receives the
+-- chunks the player actually walks into.
+starconfig.applyClient(starconfig.get())
 
 return {}

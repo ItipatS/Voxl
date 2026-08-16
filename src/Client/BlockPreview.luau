@@ -6,6 +6,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Mesher = require(ReplicatedStorage.Misc.Mesher)
+local Blocks = require(ReplicatedStorage.Misc.Blocks)
 
 local BlockPreview = {}
 
@@ -17,29 +18,40 @@ function BlockPreview.build(vpf: ViewportFrame, blockId: number)
             c:Destroy()
         end
     end
-    local tex = Mesher.BlockTextures[blockId]
-    if not tex then
+    local def = Blocks.def(blockId)
+    if not def then
         return
     end
+    local tex = Mesher.BlockTextures[blockId]
 
     local part = Instance.new("Part")
-    part.Transparency = 1
-    part.Size = Vector3.new(SIZE, SIZE, SIZE)
-    part.CFrame = CFrame.new()
+    -- a slab previews as a slab, not as a full cube
+    local halfY = if def.shape == "slab" then SIZE * 0.5 else SIZE
+    part.Size = Vector3.new(SIZE, halfY, SIZE)
+    part.CFrame = CFrame.new(0, (halfY - SIZE) * 0.5, 0)
     part.Anchored = true
-    part.Material = Enum.Material.SmoothPlastic
-    local function face(nid: Enum.NormalId, img: string)
-        local t = Instance.new("Texture")
-        t.Texture = img
-        t.Face = nid
-        t.StudsPerTileU = SIZE
-        t.StudsPerTileV = SIZE
-        t.Parent = part
+    if tex then
+        -- textured block: the part is invisible and the faces do the drawing
+        part.Transparency = 1
+        part.Material = Enum.Material.SmoothPlastic
+        local function face(nid: Enum.NormalId, img: string)
+            local t = Instance.new("Texture")
+            t.Texture = img
+            t.Face = nid
+            t.StudsPerTileU = SIZE
+            t.StudsPerTileV = SIZE
+            t.Parent = part
+        end
+        face(Enum.NormalId.Top, tex.top)
+        face(Enum.NormalId.Right, tex.side)
+        face(Enum.NormalId.Back, tex.side)
+        face(Enum.NormalId.Front, tex.side)
+    else
+        -- flat-shaded block (the builder set, doc 23): the part IS the preview
+        part.Transparency = def.alpha or 0
+        part.Color = def.color
+        part.Material = def.material
     end
-    face(Enum.NormalId.Top, tex.top)
-    face(Enum.NormalId.Right, tex.side)
-    face(Enum.NormalId.Back, tex.side)
-    face(Enum.NormalId.Front, tex.side)
     part.Parent = vpf
 
     local cam = Instance.new("Camera")

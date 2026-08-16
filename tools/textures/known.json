@@ -1,0 +1,35 @@
+{
+  "_comment": [
+    "Asset ids for textures uploaded by hand, before or outside the tool.",
+    "Open Cloud can't list what you own, so an id that never came from an upload has",
+    "to be written down somewhere — this is that somewhere. Entries here WIN over the",
+    "manifest, and a file whose block+face is covered here is NOT re-uploaded.",
+    "Faces: all | top | side | bottom.",
+    "",
+    "These mirror the hand-entered TEX table in src/Misc/Blocks.luau. Keep the two in",
+    "step: TEX is how a def gets an id, this is how the uploader knows to skip the file."
+  ],
+
+  "Grass": { "top": "99956800911799", "side": "108714877040603" },
+  "Dirt": { "all": "112826071106637" },
+  "Sand": { "all": "75605206965672" },
+  "Stone": { "all": "84046704582684" },
+  "Snow": { "all": "121040441244210" },
+  "OakLog": { "top": "105200585443073", "side": "120664114630276" },
+  "OakLeaves": { "all": "104131890534229" },
+  "Gravel": { "all": "96685582808606" },
+
+  "CoalOre": { "all": "90619202436409" },
+  "IronOre": { "all": "74691325001194" },
+  "GoldOre": { "all": "91912725080241" },
+  "DiamondOre": { "all": "117922682787787" },
+
+  "_seaLanternNote": [
+    "SeaLantern is a THIRD-PARTY decal (creator 173613594, uploaded 2019), not ours.",
+    "Approved, so it exists — but asset-delivery returns 403 for it, and a decal id",
+    "you don't own is the one case where rbxassetid:// can resolve in Studio and not",
+    "at runtime. If the block renders blank in game, that's why: drop a sealantern.png",
+    "into the texture folder and re-run the uploader, same as every other block."
+  ],
+  "SeaLantern": { "all": "3731393126" }
+}

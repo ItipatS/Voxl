@@ -26,7 +26,7 @@ local LockService = {}
 type Claim = { owner: number, wx: number, wz: number, radius: number, visual: Model? }
 local claims: { Claim } = {}
 
-local crownTemplate = ReplicatedStorage:WaitForChild("Assets"):WaitForChild("crown")
+local crownTemplate = ReplicatedStorage.Assets.Items.Crown
 local claimsFolder = Instance.new("Folder")
 claimsFolder.Name = "Claims"
 claimsFolder.Parent = Workspace

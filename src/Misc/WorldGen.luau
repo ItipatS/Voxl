@@ -3,8 +3,15 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Blocks = require(ReplicatedStorage.Misc.Blocks)
+local PrebakedMap = require(ReplicatedStorage.Misc.PrebakedMap)
 
 local WorldGen = {}
+
+-- BAKED mode (doc 23): a star whose terrain was IMPORTED, not generated. When
+-- applyPrebaked() has been called, the three queries every consumer goes through
+-- (getColumn / getSurfaceHeight / blockAt) read the baked blob instead of the
+-- noise field — so the mesher, block editing, spawn and locks all work unchanged.
+local baked: PrebakedMap.Map? = nil
 
 local CHUNK_SIZE = 16
 local WORLD_HEIGHT = 256
@@ -17,7 +24,7 @@ local BASE_SEED = 1339 -- active noise seed; a bounded star overrides this per-w
 -- star with a RESTRICTED biome palette. Unset = legacy infinite continent. Both server +
 -- client call applyStar with the SAME config (std/starconfig) so terrain matches.
 local starRadius: number? = nil -- island radius in BLOCKS (star centre at world 0,0)
-local starBiomes: { number }? = nil -- the star's biome palette (ids), most-common first
+local starBiomes: { number }? = nil -- the star's biome palette (ids), sorted low-tier → high-tier
 
 -- Block ids live in the registry (Blocks.luau); WorldGen just references them.
 WorldGen.BLOCK = Blocks.ID
@@ -82,6 +89,31 @@ local B_COLD_DESERT = 13
 local B_HIGHLAND = 14
 local B_SNOWY_PEAKS = 15
 
+-- Star-ladder rungs (doc 21): the 25-biome grid is 5 families × 5 tiers. Nine of the rungs
+-- reuse the legacy defs above (Forest/Jungle/Crag/Highland/Desert/Taiga/Tundra/Swamp); the
+-- 16 below fill the calm T1s, the wild T4s and the surreal T5 show-stoppers. Append-only.
+local B_MEADOW = 16        -- Flora T1
+local B_ANCIENT_GROVE = 17 -- Flora T4
+local B_WILDWOOD = 18      -- Flora T5
+local B_ROCKLAND = 19      -- Stone T1
+local B_PEAKS = 20         -- Stone T4 (snowless SnowyPeaks)
+local B_MONOLITHS = 21     -- Stone T5
+local B_DUNES = 22         -- Sand  T1
+local B_BADLANDS = 23      -- Sand  T3
+local B_MESA = 24          -- Sand  T4
+local B_GLASS_SEA = 25     -- Sand  T5
+local B_FROSTFIELD = 26    -- Frost T1
+local B_GLACIER = 27       -- Frost T4
+local B_AURORA_SHELF = 28  -- Frost T5
+local B_MARSH = 29         -- Bog   T1
+local B_FEN = 30           -- Bog   T3
+local B_MIRE = 31          -- Bog   T4
+local B_SPORE_HOLLOW = 32  -- Bog   T5
+
+-- The biome every column of a BAKED star reports. It grows no trees (the map
+-- brought its own) and carries a neutral grass tint for the mesher.
+local B_IMPORTED = 33
+
 local Biomes: { [number]: BiomeDef } = {
     [B_PLAINS] = { name = "Plains", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
         minHeight = 60, maxHeight = 70, flatness = 2.2, hilliness = 2, ridged = 0,
@@ -128,6 +160,72 @@ local Biomes: { [number]: BiomeDef } = {
     [B_SNOWY_PEAKS] = { name = "SnowyPeaks", top = BLOCK.Snow, under = BLOCK.Stone, soilDepth = 3,
         minHeight = 130, maxHeight = 200, flatness = 1, hilliness = 9, ridged = 66,
         treeDensity = 0, grass = nil },
+
+    -- ===== Star-ladder rungs (doc 21) — the 16 authored biomes =====
+    -- FLORA (green, organic): Meadow → [Forest] → [Jungle] → Ancient Grove → Wildwood
+    [B_MEADOW] = { name = "Meadow", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 60, maxHeight = 68, flatness = 2.6, hilliness = 2, ridged = 0,
+        treeDensity = 4, grass = Color3.fromRGB(150, 200, 100) },
+    [B_ANCIENT_GROVE] = { name = "Ancient Grove", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 6,
+        minHeight = 64, maxHeight = 98, flatness = 1.1, hilliness = 7, ridged = 8,
+        treeDensity = 92, grass = Color3.fromRGB(110, 150, 72) },
+    [B_WILDWOOD] = { name = "Bioluminescent Wildwood", top = BLOCK.MossBlock, under = BLOCK.Dirt, soilDepth = 5,
+        minHeight = 66, maxHeight = 122, flatness = 1, hilliness = 9, ridged = 30,
+        treeDensity = 70, grass = Color3.fromRGB(80, 210, 165) },
+
+    -- STONE (grey/brown, mineral): Rockland → [Crag] → [Highland] → Peaks → Floating Monoliths
+    [B_ROCKLAND] = { name = "Rockland", top = BLOCK.Stone, under = BLOCK.Stone, soilDepth = 2,
+        minHeight = 62, maxHeight = 80, flatness = 1.6, hilliness = 6, ridged = 6,
+        treeDensity = 0, grass = nil },
+    [B_PEAKS] = { name = "Peaks", top = BLOCK.Stone, under = BLOCK.Stone, soilDepth = 3,
+        minHeight = 120, maxHeight = 190, flatness = 1, hilliness = 9, ridged = 62,
+        treeDensity = 0, grass = nil },
+    [B_MONOLITHS] = { name = "Floating Monoliths", top = BLOCK.Andesite, under = BLOCK.Stone, soilDepth = 3,
+        minHeight = 100, maxHeight = 200, flatness = 1, hilliness = 10, ridged = 82,
+        treeDensity = 0, grass = nil },
+
+    -- SAND (tan/ochre, silica): Dunes → [Desert] → Badlands → Mesa → Glass Sea
+    [B_DUNES] = { name = "Dunes", top = BLOCK.Sand, under = BLOCK.Sand, soilDepth = 6,
+        minHeight = 58, maxHeight = 72, flatness = 1.5, hilliness = 6, ridged = 0,
+        treeDensity = 0, grass = nil },
+    [B_BADLANDS] = { name = "Badlands", top = BLOCK.RedSand, under = BLOCK.RedSandstone, soilDepth = 5,
+        minHeight = 64, maxHeight = 112, flatness = 1.1, hilliness = 6, ridged = 42,
+        treeDensity = 0, grass = nil },
+    [B_MESA] = { name = "Mesa", top = BLOCK.RedSand, under = BLOCK.RedSandstone, soilDepth = 6,
+        minHeight = 80, maxHeight = 152, flatness = 1, hilliness = 7, ridged = 56,
+        treeDensity = 0, grass = nil },
+    [B_GLASS_SEA] = { name = "Glass Sea", top = BLOCK.Ice, under = BLOCK.PackedIce, soilDepth = 4,
+        minHeight = 60, maxHeight = 66, flatness = 3, hilliness = 1, ridged = 0,
+        treeDensity = 0, grass = nil },
+
+    -- FROST (white/blue, cryo): Frostfield → [Taiga] → [Tundra] → Glacier → Aurora Shelf
+    [B_FROSTFIELD] = { name = "Frostfield", top = BLOCK.Snow, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 60, maxHeight = 70, flatness = 2.4, hilliness = 2, ridged = 0,
+        treeDensity = 2, grass = nil },
+    [B_GLACIER] = { name = "Glacier", top = BLOCK.Snow, under = BLOCK.PackedIce, soilDepth = 3,
+        minHeight = 110, maxHeight = 178, flatness = 1, hilliness = 8, ridged = 56,
+        treeDensity = 0, grass = nil },
+    [B_AURORA_SHELF] = { name = "Aurora Shelf", top = BLOCK.Ice, under = BLOCK.PackedIce, soilDepth = 4,
+        minHeight = 66, maxHeight = 132, flatness = 1, hilliness = 9, ridged = 26,
+        treeDensity = 0, grass = nil },
+
+    -- BOG (murky green/brown, decay): Marsh → [Swamp] → Fen → Mire → Spore Hollow
+    [B_MARSH] = { name = "Marsh", top = BLOCK.Grass, under = BLOCK.Mud, soilDepth = 4,
+        minHeight = 58, maxHeight = 63, flatness = 3.2, hilliness = 2, ridged = 0,
+        treeDensity = 6, grass = Color3.fromRGB(120, 150, 86) },
+    [B_FEN] = { name = "Fen", top = BLOCK.Mud, under = BLOCK.Mud, soilDepth = 5,
+        minHeight = 57, maxHeight = 66, flatness = 2.6, hilliness = 3, ridged = 0,
+        treeDensity = 20, grass = Color3.fromRGB(96, 112, 62) },
+    [B_MIRE] = { name = "Mire", top = BLOCK.Mud, under = BLOCK.CoarseDirt, soilDepth = 5,
+        minHeight = 56, maxHeight = 72, flatness = 2, hilliness = 4, ridged = 8,
+        treeDensity = 30, grass = Color3.fromRGB(104, 130, 70) },
+    [B_SPORE_HOLLOW] = { name = "Spore Hollow", top = BLOCK.MossBlock, under = BLOCK.Mud, soilDepth = 5,
+        minHeight = 58, maxHeight = 112, flatness = 1.2, hilliness = 8, ridged = 22,
+        treeDensity = 40, grass = nil },
+
+    [B_IMPORTED] = { name = "Imported", top = BLOCK.Grass, under = BLOCK.Dirt, soilDepth = 4,
+        minHeight = 60, maxHeight = 70, flatness = 2, hilliness = 0, ridged = 0,
+        treeDensity = 0, grass = Color3.fromRGB(125, 178, 84) },
 }
 
 
@@ -147,15 +245,23 @@ local function islandFactor(wx: number, wz: number): number
     return 1 - t * t * (3 - 2 * t)
 end
 
--- Pick a biome from the star's palette via a low-freq region field. Earlier entries (lower
--- tiers) get exponentially more area; the last entry (a T5) is a small patch.
+-- Pick a biome from the star's palette. The palette is sorted low-tier → high-tier, and the
+-- field blends a low-freq region noise (for organic patch shapes) with an INWARD radial bias:
+-- near the rim the field is small → the common low-tier rungs (which also carry more weight);
+-- toward the island's heart the field swells → the rare high-tier rung surfaces as a central
+-- locus. So you cross ordinary terrain and *discover* the star's payoff biome at its core
+-- (doc 21: "the T5, if any, is a single special locus, often central"). Deterministic.
 local function pickStarBiome(wx: number, wz: number): number
     local list = starBiomes :: { number }
     local n = #list
     if n <= 1 then
         return list[1] or 1
     end
-    local field = n01(noise2D(BASE_SEED + 800, wx * 0.012, wz * 0.012))
+    local rad = starRadius :: number
+    local rr = math.clamp(math.sqrt(wx * wx + wz * wz) / rad, 0, 1) -- 0 centre .. 1 rim
+    local region = n01(noise2D(BASE_SEED + 800, wx * 0.012, wz * 0.012))
+    local field = region * 0.6 + (1 - rr) * 0.4 -- inward bias toward the heart
+    -- Weighted CDF: earlier (lower-tier) rungs cover exponentially more area.
     local total = 0
     for i = 1, n do
         total += 0.5 ^ (i - 1)
@@ -170,9 +276,15 @@ local function pickStarBiome(wx: number, wz: number): number
     return list[n]
 end
 
--- Coarse resource-TYPE → representative biome (doc 21 ladder mapping; tier refinement later).
-local TYPE_BIOME: { [string]: number } = {
-    Flora = 3, Stone = 4, Sand = 2, Frost = 10, Bog = 8, -- Forest, Crag, Desert, Taiga, Swamp
+-- The 25-biome LADDER (doc 21): family → its 5-rung tier list of biome ids (T1..T5). This is
+-- the canonical grid the star palette draws from — a star's rolled {type,tier} biomes map
+-- straight through here. Nine rungs reuse the legacy climate defs; the rest are authored above.
+local LADDER: { [string]: { number } } = {
+    Flora = { B_MEADOW,     B_FOREST,  B_JUNGLE,   B_ANCIENT_GROVE, B_WILDWOOD },
+    Stone = { B_ROCKLAND,   B_CRAG,    B_HIGHLAND, B_PEAKS,         B_MONOLITHS },
+    Sand  = { B_DUNES,      B_DESERT,  B_BADLANDS, B_MESA,          B_GLASS_SEA },
+    Frost = { B_FROSTFIELD, B_TAIGA,   B_TUNDRA,   B_GLACIER,       B_AURORA_SHELF },
+    Bog   = { B_MARSH,      B_SWAMP,   B_FEN,      B_MIRE,          B_SPORE_HOLLOW },
 }
 
 local function sampleHeightNoise(wx: number, wz: number): number
@@ -528,6 +640,9 @@ end
 -- Deterministic surface height (in block units) for a world column.
 -- Shared by server & client so both agree on where the ground is without any data transfer.
 function WorldGen.getSurfaceHeight(wx: number, wz: number): number
+    if baked then
+        return baked.columnTop(wx, wz)
+    end
     local base01 = sampleHeightNoise(wx, wz)
     local temp   = sampleTempNoise(wx, wz)
     local humid  = sampleHumidityNoise(wx, wz)
@@ -539,6 +654,9 @@ end
 -- for materials and comes for free while computing the height). This is the basis
 -- for client-side generation: the server only has to send chunk coordinates.
 function WorldGen.getColumn(wx: number, wz: number): (number, number)
+    if baked then
+        return baked.columnTop(wx, wz), B_IMPORTED
+    end
     local base01 = sampleHeightNoise(wx, wz)
     local temp   = sampleTempNoise(wx, wz)
     local humid  = sampleHumidityNoise(wx, wz)
@@ -550,6 +668,11 @@ end
 -- intentionally ignored: they sit >= CAVE_END_OFFSET below the surface, are fully
 -- internal, and never appear in the meshed surface shell.
 function WorldGen.materialAt(y: number, surfaceY: number, biomeId: number): number
+    if baked then
+        -- No column coords here, so this can only answer the shape question. Baked
+        -- callers use blockAt(); this stays honest about solid-vs-air.
+        return if y > surfaceY then BLOCK.Air else BLOCK.Stone
+    end
     if y > surfaceY then
         return BLOCK.Air
     end
@@ -568,6 +691,9 @@ end
 -- Full cave-aware block at a cell (carves caves out of the terrain). Used by the
 -- client to render the true 3D terrain (surface + caves) with no data transfer.
 function WorldGen.blockAt(wx: number, y: number, wz: number, surfaceY: number, biomeId: number): number
+    if baked then
+        return baked.blockAt(wx, y, wz)
+    end
     local mat = WorldGen.materialAt(y, surfaceY, biomeId)
     if mat == BLOCK.Air then
         -- air above the surface: a tree (trunk/leaves) may occupy this cell
@@ -607,6 +733,7 @@ WorldGen.TREE_BIOMES = TREE_BIOMES
 
 -- ---- bounded-star config (doc 21): both server + client call the SAME applyStar ----
 function WorldGen.applyStar(seed: number, radiusBlocks: number, biomeIds: { number })
+    baked = nil -- a generated star replaces any baked one
     BASE_SEED = seed
     starRadius = radiusBlocks
     starBiomes = biomeIds
@@ -614,13 +741,84 @@ function WorldGen.applyStar(seed: number, radiusBlocks: number, biomeIds: { numb
     treeCacheN = 0
 end
 
--- Build the palette from the universe's rolled resource TYPES (coarse type→biome; doc 21).
-function WorldGen.applyStarByTypes(seed: number, radiusBlocks: number, types: { string })
+-- CANONICAL palette entry (doc 21): the universe's rolled `{type,tier}` biomes → ladder ids.
+-- Sorted low-tier → high-tier so the common rungs cover the disc and the rare rung is central
+-- (see pickStarBiome). `applyStarByTypes` is the tier-less fallback for direct/Studio joins.
+export type StarBiome = { type: string, tier: number }
+function WorldGen.applyStarByBiomes(seed: number, radiusBlocks: number, biomes: { StarBiome })
+    local sorted = table.clone(biomes)
+    table.sort(sorted, function(a, b)
+        return a.tier < b.tier
+    end)
     local ids: { number } = {}
-    for _, t in types do
-        ids[#ids + 1] = TYPE_BIOME[t] or 1
+    for _, b in sorted do
+        local rung = LADDER[b.type]
+        ids[#ids + 1] = (rung and rung[b.tier]) or B_MEADOW
+    end
+    if #ids == 0 then
+        ids[1] = B_MEADOW
     end
     WorldGen.applyStar(seed, radiusBlocks, ids)
+end
+
+-- Tier-less fallback: each rolled TYPE becomes its classic T2 rung (used when only the star's
+-- resource types are known — e.g. a direct/Studio join with no per-biome tier data).
+function WorldGen.applyStarByTypes(seed: number, radiusBlocks: number, types: { string })
+    local biomes: { StarBiome } = {}
+    for _, t in types do
+        biomes[#biomes + 1] = { type = t, tier = 2 }
+    end
+    WorldGen.applyStarByBiomes(seed, radiusBlocks, biomes)
+end
+
+-- ---- baked star (doc 23): terrain comes from an imported blob, not from noise ----
+-- Takes an already-built map because the two sides build theirs differently: the
+-- server opens the blob it holds privately in ServerStorage, the client starts with
+-- an empty receiver and is fed chunks as it walks. Everything downstream of here is
+-- identical either way.
+function WorldGen.applyPrebaked(map: PrebakedMap.Map)
+    baked = map
+    starRadius = map.radius -- bounded like any star (spawn/lock code asks isStar())
+    starBiomes = nil
+    table.clear(treeCache)
+    treeCacheN = 0
+end
+
+-- The active baked map, for the systems that stream it (nil on a generated star).
+function WorldGen.bakedMap(): PrebakedMap.Map?
+    return baked
+end
+
+-- Lowest y the mesher needs to look at for a chunk; below it the world is solid
+-- and invisible. Procedurally the answer is the cave floor. A baked map knows
+-- better — its columns record where the island interior starts — and answering
+-- honestly is worth a lot, because a map whose sea level sits high would
+-- otherwise have every chunk scan ~70 levels of nothing. The 3×3 neighbourhood
+-- is taken so the mesher's one-block border into adjacent chunks stays truthful
+-- (a lower neighbour must not get culled away as "solid").
+function WorldGen.meshFloor(cx: number, cz: number): number
+    if not baked then
+        return CAVE_START_Y - 1
+    end
+    local map = baked :: PrebakedMap.Map
+    local lo = 255
+    for dz = -1, 1 do
+        for dx = -1, 1 do
+            local f = map.chunkFloor(cx + dx, cz + dz)
+            if f < lo then
+                lo = f
+            end
+        end
+    end
+    return math.max(0, lo - 1)
+end
+
+function WorldGen.isBaked(): boolean
+    return baked ~= nil
+end
+
+function WorldGen.bakedName(): string?
+    return if baked then baked.name else nil
 end
 
 function WorldGen.isStar(): boolean

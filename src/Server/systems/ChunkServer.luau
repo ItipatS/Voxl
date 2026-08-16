@@ -3,11 +3,17 @@
 --!native
 --!strict
 
--- The terrain is deterministic (WorldGen), so the server never generates or sends
--- block data — it just tells each client WHICH chunks to load (coordinates, ~4
--- bytes each) and the client generates + meshes them locally. The server stays
+-- Procedural terrain is deterministic (WorldGen), so the server never generates or
+-- sends block data — it just tells each client WHICH chunks to load (coordinates,
+-- ~4 bytes each) and the client generates + meshes them locally. The server stays
 -- authoritative over what a player streams (and, later, edit diffs) while the wire
 -- cost drops from ~15 KB/chunk to ~4 bytes/chunk.
+--
+-- A BAKED star (doc 23) can't be derived from a seed, so those chunks DO carry
+-- data — but only the ones a player actually reaches, and still compressed
+-- (~540 B each). The map itself never leaves ServerStorage. Records are sent just
+-- before the matching LoadChunks, in the same reliable flush, so the data is always
+-- present by the time the client is told to build the chunk.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,6 +35,10 @@ local UNLOAD_RADIUS = LOAD_RADIUS + 3
 -- Coordinates are tiny, so we can send a lot per tick without any interval delay;
 -- this is just a soft cap so a single packet stays sane.
 local SEND_BATCH = 128
+-- A baked chunk carries ~540 bytes of terrain, so the same batch size would mean a
+-- 70 KB packet every Heartbeat. Cap it far lower and let the stream fill in over a
+-- second or two — the client meshes nearest-first anyway.
+local SEND_BATCH_BAKED = 16
 
 type PlayerState = {
     sent: { [string]: boolean },
@@ -98,12 +108,29 @@ local function streamForPlayer(plr: Player, st: PlayerState)
         return a.d < b.d
     end)
 
-    -- 3) Send a batch of coordinates (nearest first)
+    -- 3) Send a batch of coordinates (nearest first). On a baked star each chunk
+    --    also carries its compressed record — sent FIRST, so that when the client
+    --    handles LoadChunks the terrain for it is already in hand.
+    local map = WorldGen.bakedMap()
+    local limit = if map then SEND_BATCH_BAKED else SEND_BATCH
     local batch = {}
-    for i = 1, math.min(#candidates, SEND_BATCH) do
+    local records = if map then {} else nil
+    for i = 1, math.min(#candidates, limit) do
         local c = candidates[i]
         batch[#batch + 1] = { cx = c.cx, cz = c.cz }
         st.sent[chunkKey(c.cx, c.cz)] = true
+        if map then
+            -- A void chunk (outside the island) simply has no record; the client
+            -- reads "announced but never fed" as empty space.
+            local data, raw = map.record(c.cx, c.cz)
+            if data then
+                (records :: any)[#(records :: any) + 1] =
+                    { cx = c.cx, cz = c.cz, raw = raw, data = data }
+            end
+        end
+    end
+    if records and #records > 0 then
+        blink.MapChunks.Fire(plr, records)
     end
     blink.LoadChunks.Fire(plr, batch)
 end
