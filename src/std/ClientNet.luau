@@ -176,6 +176,7 @@ Queue.Reliable[16] = table.create(256)
 Queue.Reliable[18] = table.create(256)
 Queue.Reliable[21] = table.create(256)
 Queue.Unreliable[2] = table.create(256)
+Queue.Reliable[26] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type MapChunk = { cx: number, cz: number, raw: number, data: buffer }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
@@ -692,6 +693,20 @@ function SerdesFunctions.WriteEVENT_EquipItem(Value: number): ()
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Value)
 end
 
+function SerdesFunctions.WriteEVENT_LeaveStar(Value: nil): ()
+	-- Allocate BLOCK: 1 bytes
+	local BLOCK_START = Allocate(1)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 25)
+end
+
+function SerdesFunctions.ReadEVENT_LeaveDenied(): (string)
+	-- Read BLOCK: 2 bytes
+	local BLOCK_START = Read(2)
+	local Length = buffer.readu16(RecieveBuffer, BLOCK_START + 0)
+	local Value = buffer.readstring(RecieveBuffer, Read(Length), Length)
+	return Value
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -778,6 +793,12 @@ if not RunService:IsRunning() then
 	},
 	EquipItem = {
 		Fire = NOOP
+	},
+	LeaveStar = {
+		Fire = NOOP
+	},
+	LeaveDenied = {
+		On = NOOP
 	},
 	})
 	return Returns :: BLINK_EVENTS_SYMBOL
@@ -963,6 +984,17 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 					warn("[Blink]: Event queue of \"EnterDenied\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[21], {Value} :: {any})
+			end
+		elseif Index == 26 then
+			local Value: string = SerdesFunctions.ReadEVENT_LeaveDenied()
+			if Events.Reliable[26] ~= nil then
+				SerdesEvent = "LeaveDenied"
+				Events.Reliable[26](Value)
+			else
+				if #Queue.Reliable[26] > 256 then
+					warn("[Blink]: Event queue of \"LeaveDenied\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[26], {Value} :: {any})
 			end
 		end
 	end
@@ -1278,6 +1310,25 @@ local Returns = table.freeze({
 	EquipItem = {
 		Fire = function(Value: number): ()
 			SerdesFunctions.WriteEVENT_EquipItem(Value)
+		end
+	},
+	LeaveStar = {
+		Fire = function(Value: nil): ()
+			SerdesFunctions.WriteEVENT_LeaveStar(Value)
+		end
+	},
+	LeaveDenied = {
+		On = function(Listener: (Value: string) -> ()): () -> ()
+			Events.Reliable[26] = Listener
+			for Index, Arguments in Queue.Reliable[26] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[26] = {}
+			return function (): ()
+				if Events.Reliable[26] == Listener then
+					Events.Reliable[26] = nil
+				end
+			end
 		end
 	},
 })

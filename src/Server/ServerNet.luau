@@ -173,6 +173,7 @@ Queue.Reliable[20] = table.create(256)
 Queue.Reliable[22] = table.create(256)
 Queue.Reliable[23] = table.create(256)
 Queue.Reliable[24] = table.create(256)
+Queue.Reliable[25] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type MapChunk = { cx: number, cz: number, raw: number, data: buffer }
 export type BlockEdit = { wx: number, y: number, wz: number, block: number }
@@ -647,6 +648,20 @@ function SerdesFunctions.ReadEVENT_EquipItem(): (number)
 	return Value
 end
 
+function SerdesFunctions.ReadEVENT_LeaveStar(): (nil)
+	return nil
+end
+
+function SerdesFunctions.WriteEVENT_LeaveDenied(Value: string): ()
+	-- Allocate BLOCK: 3 bytes
+	local BLOCK_START = Allocate(3)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 26)
+	local Length = #Value
+	buffer.writeu16(SendBuffer, BLOCK_START + 1, Length)
+	Allocate(Length)
+	buffer.writestring(SendBuffer, SendOffset, Value, Length)
+end
+
 if not RunService:IsRunning() then
 	local NOOP = function() end
 	local Returns = table.freeze({
@@ -781,6 +796,15 @@ if not RunService:IsRunning() then
 	},
 	EquipItem = {
 		On = NOOP
+	},
+	LeaveStar = {
+		On = NOOP
+	},
+	LeaveDenied = {
+		Fire = NOOP,
+		FireAll = NOOP,
+		FireList = NOOP,
+		FireExcept = NOOP
 	},
 	})
 	return Returns :: BLINK_EVENTS_SYMBOL
@@ -975,6 +999,17 @@ Reliable.OnServerEvent:Connect(function(Player: Player, Buffer: buffer, Instance
 					warn("[Blink]: Event queue of \"EquipItem\" exceeded 256, did you forget to implement a listener?")
 				end
 				table.insert(Queue.Reliable[24], {Player, Value} :: {any})
+			end
+		elseif Index == 25 then
+			local Value: nil = SerdesFunctions.ReadEVENT_LeaveStar()
+			if Events.Reliable[25] ~= nil then
+				SerdesEvent = "LeaveStar"
+				Events.Reliable[25](Player, Value)
+			else
+				if #Queue.Reliable[25] > 256 then
+					warn("[Blink]: Event queue of \"LeaveStar\" exceeded 256, did you forget to implement a listener?")
+				end
+				table.insert(Queue.Reliable[25], {Player, Value} :: {any})
 			end
 		end
 	end
@@ -1877,6 +1912,66 @@ local Returns = table.freeze({
 				end
 			end
 		end
+	},
+	LeaveStar = {
+		On = function(Listener: (Player: Player, Value: nil) -> ()): () -> ()
+			Events.Reliable[25] = Listener
+			for Index, Arguments in Queue.Reliable[25] do
+				Listener(table.unpack(Arguments))
+			end
+			Queue.Reliable[25] = {}
+			return function (): ()
+				if Events.Reliable[25] == Listener then
+					Events.Reliable[25] = nil
+				end
+			end
+		end
+	},
+	LeaveDenied = {
+		Fire = function(Player: Player, Value: string): ()
+			Load(PlayersMap[Player])
+			SerdesFunctions.WriteEVENT_LeaveDenied(Value)
+			PlayersMap[Player] = Save()
+		end,
+		FireAll = function(Value: string): ()
+			Load()
+			SerdesFunctions.WriteEVENT_LeaveDenied(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireList = function(List: {Player}, Value: string): ()
+			Load()
+			SerdesFunctions.WriteEVENT_LeaveDenied(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in List do
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
+		FireExcept = function(Except: Player, Value: string): ()
+			Load()
+			SerdesFunctions.WriteEVENT_LeaveDenied(Value)
+			local Buffer, Size, Instances = SendBuffer, SendCursor, SendInstances
+			for _, Player in Players:GetPlayers() do
+				if Player == Except then
+					continue
+				end
+				Load(PlayersMap[Player])
+				local Position = Allocate(Size)
+				buffer.copy(SendBuffer, Position, Buffer, 0, Size)
+				table.move(Instances, 1, #Instances, #SendInstances + 1, SendInstances)
+				PlayersMap[Player] = Save()
+			end
+		end,
 	},
 })
 type BLINK_EVENTS_SYMBOL = typeof(Returns)

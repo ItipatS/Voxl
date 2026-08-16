@@ -28,6 +28,9 @@ local PANELS: { { name: string, primary: string, cfg: any } } = {
 		primary = "Inventory",
 		cfg = { frames = { "Inventory", "Equipments" }, group = "main", key = Enum.KeyCode.E },
 	},
+	-- The quick menu itself is a panel: it ships Visible = false and the Menu
+	-- button is what raises it (Quest / Map / Bag / Back live inside it).
+	{ name = "QuickMenu", primary = "QuickMenu", cfg = { group = "main" } },
 	-- Future panels — add the frame in Studio + a button below and they light up:
 	{ name = "Map", primary = "Map", cfg = { group = "main" } },
 	{ name = "Quest", primary = "Quest", cfg = { group = "main" } },
@@ -36,12 +39,16 @@ local PANELS: { { name: string, primary: string, cfg: any } } = {
 
 -- button path (under Interface) → panel + action. Skipped if either is absent.
 local BUTTONS: { { path: string, panel: string, action: string } } = {
-	{ path = "quickMenu.Bag", panel = "Inventory", action = "toggle" },
+	-- NOTE the capital Q. These read "quickMenu" for a long time, and
+	-- FindFirstChild is case-SENSITIVE — every path resolved to nil, and byPath
+	-- returning nil is a silent skip, so Bag/Map/Quest simply did nothing.
+	{ path = "QuickMenu.Bag", panel = "Inventory", action = "toggle" },
 	{ path = "Inventory.Exit", panel = "Inventory", action = "close" },
-	{ path = "quickMenu.Map", panel = "Map", action = "toggle" },
-	{ path = "quickMenu.Quest", panel = "Quest", action = "toggle" },
-	{ path = "quickMenu.Menu", panel = "Settings", action = "toggle" },
-	{ path = "Menu", panel = "Settings", action = "toggle" },
+	{ path = "QuickMenu.Map", panel = "Map", action = "toggle" },
+	{ path = "QuickMenu.Quest", panel = "Quest", action = "toggle" },
+	-- Menu (a direct child of Interface) raises the quick menu. There is no
+	-- QuickMenu.Menu — its children are Quest / Map / Bag / Back.
+	{ path = "Menu", panel = "QuickMenu", action = "toggle" },
 }
 
 local function byPath(path: string): Instance?

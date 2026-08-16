@@ -45,6 +45,7 @@ if placemode.Mode == "ResourceStar" then
 	req("HeldTools") -- held-tool activation → behavior + particle distance-LOD (doc 20)
 	req("BlockEdit")
 	req("LockController")
+	req("StarExit") -- QuickMenu > Back > confirm > back to the Cluster
 	-- Day/night. Lives under ClientServices, not src/Client, so it cannot go through
 	-- req() — that only looks in StarterPlayerScripts. Only the star place runs a
 	-- cycle: the lobby is deep space, where permanent night is correct.

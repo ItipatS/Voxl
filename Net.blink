@@ -364,3 +364,23 @@ event EquipItem {
     Call: SingleSync,
     Data: u16
 }
+
+-- ---- Leaving a star (star place → the Cluster lobby) ------------------------
+-- The one way home. The client asks; the server teleports, because a client that
+-- can pick its own teleport destination is a client that can teleport anywhere —
+-- and the last client-side teleport in this codebase shipped a bug that silently
+-- dropped every hub arrival into the test star.
+event LeaveStar {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync
+}
+
+-- Server could not send them home (teleport failed / rate-limited). The client
+-- reopens the prompt and says so, instead of leaving a dead button.
+event LeaveDenied {
+    From: Server,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: string
+}
