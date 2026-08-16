@@ -1,1077 +1,1077 @@
 {
   "bc950e90db0cafda29cbd13a1fecb0092ea629a3c4c95d4b6af837b290f0b302": {
-    "decalId": "109278897787264",
+    "decalId": "104968702485511",
     "imageId": null,
     "file": "birch_leave.png",
     "block": "BirchLeaves",
     "face": "all"
   },
   "0a03842fda4f3f8649b3d0c4216f5cae6fd8516d5113f41ca1c4a12d32ca69cd": {
-    "decalId": "114915746239939",
+    "decalId": "112358419418256",
     "imageId": null,
     "file": "birch_side.png",
     "block": "BirchLog",
     "face": "side"
   },
   "93573db975df1eba9a3705446960eabda13d3f9686a2b6a1821c9cc80f908336": {
-    "decalId": "72711545058145",
+    "decalId": "123221303223682",
     "imageId": null,
     "file": "birch_top.png",
     "block": "BirchLog",
     "face": "top"
   },
   "5c3e5621d017ffc578c8675fe89888dbcce88190362434ddcdbea94f4cd51263": {
-    "decalId": "76520674690716",
+    "decalId": "124515159562841",
     "imageId": null,
     "file": "diamond (2).png",
     "block": "DiamondBlock",
     "face": "all"
   },
   "3b58639e299b8e93a94f1e07920eeda0db16c1c05bbef60f031c6eb4da5f6bf5": {
-    "decalId": "97915226480728",
+    "decalId": "108067856879018",
     "imageId": null,
     "file": "glass.png",
     "block": "Glass",
     "face": "all"
   },
   "6813647f3244d2524a4dc71809bf5a01e404790dbf3e61031a0934af47b05bf1": {
-    "decalId": "106308878098021",
+    "decalId": "135759204120095",
     "imageId": null,
     "file": "gold.png",
     "block": "GoldBlock",
     "face": "all"
   },
   "547b6a6cb4d2fbea80851fe1f584554e0a703e3c05658371ff2ce4900bf29481": {
-    "decalId": "94889535346302",
+    "decalId": "76094905258683",
     "imageId": null,
     "file": "spruce_side.png",
     "block": "SpruceLog",
     "face": "side"
   },
   "a16de56fa3245d31d1f5915c2486541dffe086ce92b67fc38fe84472cc8f2081": {
-    "decalId": "73575396040594",
+    "decalId": "101748700207427",
     "imageId": null,
     "file": "spruce_top.png",
     "block": "SpruceLog",
     "face": "top"
   },
   "85a8fd5ea998e8f9de9dd0184b53d84e693246d89c151f44456dfa4de9f5fb2c": {
-    "decalId": "137208969146898",
+    "decalId": "109145701992485",
     "imageId": null,
     "file": "acacialeaf.png",
     "block": "AcaciaLeaves",
     "face": "all"
   },
   "e63b91b790024c0bc77e11a8ce305b4b28e98715020e4a855326e175caaac9c7": {
-    "decalId": "112457420711452",
+    "decalId": "110915773644829",
     "imageId": null,
     "file": "acaciaplanks.png",
     "block": "AcaciaPlanks",
     "face": "all"
   },
   "c37ce69f8a588e140c5c355c3bcacfcdce7289979c553322d192e4156f848016": {
-    "decalId": "109703004819220",
+    "decalId": "127212909382901",
     "imageId": null,
     "file": "acaciaside.png",
     "block": "AcaciaLog",
     "face": "side"
   },
   "64b7ce23e37effd5095b2e58203e38ff92733f4b47c939933cf7a8e962c7fdfa": {
-    "decalId": "75529459635395",
+    "decalId": "129192326851896",
     "imageId": null,
     "file": "acaciatop.png",
     "block": "AcaciaLog",
     "face": "top"
   },
   "513abd256d29940d62fb1e565d51244a6d31726fa2a52eef3e6895dbac6ed569": {
-    "decalId": "124942395154751",
+    "decalId": "118148275885980",
     "imageId": null,
     "file": "amethyst.png",
     "block": "Amethyst",
     "face": "all"
   },
   "1b0b0e6980b208ad417279558fab19b5e5df4fe078f25f1b1b11d10aff249313": {
-    "decalId": "83122370511203",
+    "decalId": "134378090889811",
     "imageId": null,
     "file": "andesite.png",
     "block": "Andesite",
     "face": "all"
   },
   "d4277ec88df564c4ba4808bc8aaa336662bac73c386222f664b5e4b383cf6477": {
-    "decalId": "104858406423414",
+    "decalId": "83435992462118",
     "imageId": null,
     "file": "basalt.png",
     "block": "Basalt",
     "face": "all"
   },
   "56322e555ec87dd07a23537e409b8e020cd907168cc3017019ef8b6ef951a9da": {
-    "decalId": "78463487868842",
+    "decalId": "116409940540386",
     "imageId": null,
     "file": "bedrock.png",
     "block": "Bedrock",
     "face": "all"
   },
   "37c34b37330c31705099bdbeb43abb5169958ad631dff9d704d6bdc87558157e": {
-    "decalId": "89277482167705",
+    "decalId": "81387636831756",
     "imageId": null,
     "file": "birchplanks.png",
     "block": "BirchPlanks",
     "face": "all"
   },
   "0e0390a45f490831efc40d74979aaf43ed0f76ef40d70dc93ae411c8c6dbd00a": {
-    "decalId": "85141615539031",
+    "decalId": "94982301618892",
     "imageId": null,
     "file": "blackstone.png",
     "block": "Blackstone",
     "face": "all"
   },
   "78ee7c773e1327a2878b62b23f44e1df192ed0810ff9acfd7331f420f0f7b981": {
-    "decalId": "88648833992601",
+    "decalId": "117432403927176",
     "imageId": null,
     "file": "bookshelfside.png",
     "block": "Bookshelf",
     "face": "side"
   },
   "9468795c9d2aa0c9ca3bf4cb69f770b0d57432ef7079f27a20428d84b9849086": {
-    "decalId": "130151269782714",
+    "decalId": "112348232588857",
     "imageId": null,
     "file": "bricks.png",
     "block": "Bricks",
     "face": "all"
   },
   "4d771af3e56113aad2e6f195bbe601c686c93648e4baabd7015ec6f34ce4cb47": {
-    "decalId": "97501329102912",
+    "decalId": "135251745245122",
     "imageId": null,
     "file": "cactus.png",
     "block": "Cactus",
     "face": "all"
   },
   "72aa5d4333686c2efaae6f93c1b49f84b0efb15acc03f63778fb7e1155e39b71": {
-    "decalId": "138227580648127",
+    "decalId": "123551412557707",
     "imageId": null,
     "file": "calcite.png",
     "block": "Calcite",
     "face": "all"
   },
   "290404fab1250c2aabf37436e62932808085e0c447d8a2e9e1fa11ada1c0c46f": {
-    "decalId": "72070043860642",
+    "decalId": "88926786031887",
     "imageId": null,
     "file": "chiseledQurtz.png",
     "block": "ChiseledQuartz",
     "face": "all"
   },
   "88ada1b402af52d42dbffb91c75bdaae0211ace3d7b136a7c9d477563c290da0": {
-    "decalId": "135239096018359",
+    "decalId": "82217222941310",
     "imageId": null,
     "file": "chiseledstonebrick.png",
     "block": "ChiseledStoneBricks",
     "face": "all"
   },
   "d4c715ded65cce6b1799a4b9e22d16a10af6060d2034f46aa93a175ffb1a39c7": {
-    "decalId": "96689871688796",
+    "decalId": "78555900621125",
     "imageId": null,
     "file": "clay.png",
     "block": "Clay",
     "face": "all"
   },
   "a531f0c3ccd3216afd1f03f7f1316cadfd51a2474a183c07f136173055d86117": {
-    "decalId": "126796332482162",
+    "decalId": "101270433035603",
     "imageId": null,
     "file": "coalblock.png",
     "block": "CoalBlock",
     "face": "all"
   },
   "5d4e06666c2bdc4725895aae64d1f73623f86a88886a8249f4a00e04b1a639c6": {
-    "decalId": "128460157177804",
+    "decalId": "77675271991049",
     "imageId": null,
     "file": "coarseDirt.png",
     "block": "CoarseDirt",
     "face": "all"
   },
   "eefcfd567049b509de31dc95b91ec7db4f6e2f740e63a3135129d941883c7496": {
-    "decalId": "86349914788864",
+    "decalId": "105717411551820",
     "imageId": null,
     "file": "cobbleDeepslate.png",
     "block": "CobbledDeepslate",
     "face": "all"
   },
   "123ec3413ee66651c12aa772ee3943b5c718c0c2ae39db10114f434641526ee8": {
-    "decalId": "88208351892535",
+    "decalId": "127977384867222",
     "imageId": null,
     "file": "cobblestone.png",
     "block": "Cobblestone",
     "face": "all"
   },
   "8c90c51eeff3f16129c632f42f5193aaa7eff33caef98e06e8f17e7ed2fb30c5": {
-    "decalId": "74876164767511",
+    "decalId": "135498230352299",
     "imageId": null,
     "file": "copper.png",
     "block": "CopperBlock",
     "face": "all"
   },
   "daba339bee84291097dd81510cea15fb90eecb258957b748a9432a22ac3c174c": {
-    "decalId": "120479436204722",
+    "decalId": "83120946360975",
     "imageId": null,
     "file": "copperore.png",
     "block": "CopperOre",
     "face": "all"
   },
   "ed7620f0544fc2512e22a4e81ad86f31aa6c7ffb259953d62b1cfdb2ec2215a3": {
-    "decalId": "125898057350563",
+    "decalId": "99078156882936",
     "imageId": null,
     "file": "crckedstonebrick.png",
     "block": "CrackedStoneBricks",
     "face": "all"
   },
   "759aceff81b1ae56cbb8e6a2c5b89c35bbf19e9ea0972009022fbc63eeb8b4b9": {
-    "decalId": "119649250960186",
+    "decalId": "116929664066657",
     "imageId": null,
     "file": "darkoakplanks.png",
     "block": "DarkOakPlanks",
     "face": "all"
   },
   "23eb637f55f9fd77d55a25b76a2ca3ce51b0509d5fcf1665b1a88cb9b294b568": {
-    "decalId": "110532075315069",
+    "decalId": "81729093564476",
     "imageId": null,
     "file": "darkoakside.png",
     "block": "DarkOakLog",
     "face": "side"
   },
   "17ad42cc76f9ea8bb974307fe022cef27c275a0ad933cb6b37284924720e52e0": {
-    "decalId": "135683550015847",
+    "decalId": "96112549178697",
     "imageId": null,
     "file": "darkoaktop.png",
     "block": "DarkOakLog",
     "face": "top"
   },
   "b903b58e8b387dd79275d9b2060cb28b3d734612f19fc4901fff5a9e0236d7e8": {
-    "decalId": "136758844245716",
+    "decalId": "96565208986932",
     "imageId": null,
     "file": "darkprismarine.png",
     "block": "Prismarine",
     "face": "all"
   },
   "534b6a1165defa2a0febc677679ec6efc1ee20d3d3e167f5eee4cceb03963597": {
-    "decalId": "103066380362459",
+    "decalId": "87899338013659",
     "imageId": null,
     "file": "deepslate.png",
     "block": "Deepslate",
     "face": "all"
   },
   "394c40e3ed7076e8056a4db81c9a9e0faa42001169ba804b0c5c24189f513ba0": {
-    "decalId": "107373745281952",
+    "decalId": "87125959316292",
     "imageId": null,
     "file": "deepslatebrick.png",
     "block": "DeepslateBricks",
     "face": "all"
   },
   "287412ca5fb8440c4f12cc8d92fe346c7fd91187fc5a1faa88fe30a459d6a150": {
-    "decalId": "137197279886904",
+    "decalId": "130835376080588",
     "imageId": null,
     "file": "diamond.png",
     "block": "DiamondBlock",
     "face": "all"
   },
   "67970ab671fd8f6c66d487f33ae6b5f0cad0e7785b2b18e84c89ef31f5ad14ae": {
-    "decalId": "79927801968710",
+    "decalId": "134598676354140",
     "imageId": null,
     "file": "diorite.png",
     "block": "Diorite",
     "face": "all"
   },
   "0316d7e22c47ebf95c3412e8b0e0d446cb66901a698759e75935a590d60af05c": {
-    "decalId": "80080821866633",
+    "decalId": "129963101851489",
     "imageId": null,
     "file": "emeraldblock.png",
     "block": "EmeraldBlock",
     "face": "all"
   },
   "a1bafa3a6de7d7dbdcebe05fb5bcc9d14c22959653d9f0739d47ad23c823a3ff": {
-    "decalId": "122180958020642",
+    "decalId": "71002912706979",
     "imageId": null,
     "file": "emeraldore.png",
     "block": "EmeraldOre",
     "face": "all"
   },
   "646892d981634197f61f254982e079597a7cbeacd8011a95597bc1fd673094f2": {
-    "decalId": "140390641979393",
+    "decalId": "117989829843340",
     "imageId": null,
     "file": "glowstone.png",
     "block": "Glowstone",
     "face": "all"
   },
   "5771ca599b1507c4e11b69ede98984df582765899e7dcc5c1ab0318d5ed4800d": {
-    "decalId": "138734471182512",
+    "decalId": "128209069593456",
     "imageId": null,
     "file": "gold.png",
     "block": "GoldBlock",
     "face": "all"
   },
   "a63cd5d0d23c2f4631ee25ed4479d703a95f2c37b2146d9f354acb6af199acf6": {
-    "decalId": "92384603798654",
+    "decalId": "84592697887138",
     "imageId": null,
     "file": "granite.png",
     "block": "Granite",
     "face": "all"
   },
   "8c29af2d2e2caa4ec6116b19f67f2ba9143e3030e536189c8d847d56b252f09b": {
-    "decalId": "114031777093618",
+    "decalId": "107452308752102",
     "imageId": null,
     "file": "hayside.png",
     "block": "HayBlock",
     "face": "side"
   },
   "420efc31591c32133fa994b3fd1738ec0848079926d68e992a7ea39b6ef0a4df": {
-    "decalId": "83334922067850",
+    "decalId": "114847459463672",
     "imageId": null,
     "file": "haytop.png",
     "block": "HayBlock",
     "face": "top"
   },
   "4074688227661592e6f60a32236339515fb9b777b5864f33e4deba182a6b01fd": {
-    "decalId": "96464763271622",
+    "decalId": "70642115934714",
     "imageId": null,
     "file": "ice.png",
     "block": "Ice",
     "face": "all"
   },
   "5ac3575934fec92bd7a3e6774a4ddea6d255d5fe015e2567272d9cf5c3d9f762": {
-    "decalId": "98319816793626",
+    "decalId": "101581059094736",
     "imageId": null,
     "file": "iron.png",
     "block": "IronBlock",
     "face": "all"
   },
   "7fc3cd0572ed57b44ebddcf6b1b088c6d9a00077e66faf354c4b5b17baa16a8d": {
-    "decalId": "90266759295866",
+    "decalId": "140265479191635",
     "imageId": null,
     "file": "Ironbar.png",
     "block": "IronBars",
     "face": "all"
   },
   "d40d81d8a125ef9f6b5557df1e7f315024b5aefa058f6a48fe24cb1d83d24eb7": {
-    "decalId": "84056891579261",
+    "decalId": "120000160879919",
     "imageId": null,
     "file": "jungleleaf.png",
     "block": "JungleLeaves",
     "face": "all"
   },
   "c1575f11f2b10a4c1e26b7ed8130fc45d4bd9277951f221e2bb91467cc01dcec": {
-    "decalId": "80762991436067",
+    "decalId": "82740552129840",
     "imageId": null,
     "file": "jungleplanks.png",
     "block": "JunglePlanks",
     "face": "all"
   },
   "68dbfda0d1901b47652f9ae1505ad95ab7749489363c7949149d1313db2fa482": {
-    "decalId": "96637907626222",
+    "decalId": "73103407758541",
     "imageId": null,
     "file": "jungleside.png",
     "block": "JungleLog",
     "face": "side"
   },
   "ee4a5e8aac20f5b46bb90f109757c10f7da8630593de02bcec403d79aba1eec6": {
-    "decalId": "125347044532374",
+    "decalId": "126595224007582",
     "imageId": null,
     "file": "jungletop.png",
     "block": "JungleLog",
     "face": "top"
   },
   "06e1b95198d4b2c4eea3f1d61a58c4c103e68178caf6c95f8a138ff81fdf988e": {
-    "decalId": "135938260306574",
+    "decalId": "70993256230460",
     "imageId": null,
     "file": "lapis.png",
     "block": "LapisBlock",
     "face": "all"
   },
   "cef2b60e245a5f63aab122677fd8e4e3dcd4234789c4954e77bbb4a282ad72d0": {
-    "decalId": "116294933509668",
+    "decalId": "90721658219580",
     "imageId": null,
     "file": "lapisore.png",
     "block": "LapisOre",
     "face": "all"
   },
   "e7e263a545c69728a14d493755fbb2aa5ee20462ce09f4d53a8ff91c6915d5c4": {
-    "decalId": "105737510046024",
+    "decalId": "82219709277409",
     "imageId": null,
     "file": "magmablock.png",
     "block": "MagmaBlock",
     "face": "all"
   },
   "f8716690e7851d7cabc0fdcc98b9c66d5e2ea37b576e8a748a6200dbfbec3b7f": {
-    "decalId": "117269856953208",
+    "decalId": "118571283023871",
     "imageId": null,
     "file": "moss.png",
     "block": "MossBlock",
     "face": "all"
   },
   "499b6390b0c4cb753532b5e2e0b512bf9e154df955bde4ab43065663007c50e9": {
-    "decalId": "136120851976065",
+    "decalId": "83242567986041",
     "imageId": null,
     "file": "mossyCobblestone.png",
     "block": "MossyCobblestone",
     "face": "all"
   },
   "16f15d011d2138620be969ce91eea31dc28eff3216fbdec137cfd394eb0b3380": {
-    "decalId": "126580662446297",
+    "decalId": "93595710855313",
     "imageId": null,
     "file": "mossyStoneBricks.png",
     "block": "MossyStoneBricks",
     "face": "all"
   },
   "014379e09b68f5ade69431c357e12769e519f341d73395ce1670a0db3826f082": {
-    "decalId": "126196862110459",
+    "decalId": "81237384316011",
     "imageId": null,
     "file": "mud.png",
     "block": "Mud",
     "face": "all"
   },
   "b54bebec993b74646e245f09aa7794b2f2ac91ffebaac6bdc277487aaee6141b": {
-    "decalId": "70458120892963",
+    "decalId": "99495263754054",
     "imageId": null,
     "file": "neterBricks.png",
     "block": "NetherBricks",
     "face": "all"
   },
   "d53ac98231595cd1552ef0b1e709c92d9fe3db04d96cf6420c63b9bb3b18df92": {
-    "decalId": "103914133522011",
+    "decalId": "75995767930055",
     "imageId": null,
     "file": "netherack.png",
     "block": "Netherrack",
     "face": "all"
   },
   "00ce64efa894ecd63b14e0dc8f7b8cece5565e14ff4f16a39ab02a31ba9d4f26": {
-    "decalId": "119141419896441",
+    "decalId": "76702336678605",
     "imageId": null,
     "file": "oakplank.png",
     "block": "OakPlanks",
     "face": "all"
   },
   "5eb50e204a44fe35eb4212fb0266690d244396fa14ca7f09c8f3e9c22034b264": {
-    "decalId": "117231417362272",
+    "decalId": "140654898566726",
     "imageId": null,
     "file": "obsidian.png",
     "block": "Obsidian",
     "face": "all"
   },
   "24da877b4dd28441084b0636f518a5c51ebc698e64dadba4c9b3707c32431143": {
-    "decalId": "112319296667073",
+    "decalId": "93918376458825",
     "imageId": null,
     "file": "packedice.png",
     "block": "PackedIce",
     "face": "all"
   },
   "7bd47b1d6f54622cb6128ff25dc00617dc25d9ba2d4a2bf2af8a6698030d0f27": {
-    "decalId": "120409566040778",
+    "decalId": "88285325235658",
     "imageId": null,
     "file": "podzolside.png",
     "block": "Podzol",
     "face": "side"
   },
   "fa21f08bf68a9fac97691819209c0f6b8a478ee26597b78dbe58dba44ff483eb": {
-    "decalId": "84588507162794",
+    "decalId": "97918549689347",
     "imageId": null,
     "file": "podzoltop.png",
     "block": "Podzol",
     "face": "top"
   },
   "2c54f58c936a237002d072c42aa67ce1188dc4b10819d88277a19ec158a22e07": {
-    "decalId": "110349568912627",
+    "decalId": "99101158103555",
     "imageId": null,
     "file": "polishDiorite.png",
     "block": "PolishedDiorite",
     "face": "all"
   },
   "0ebf90614c78f8fbbb4be37379471270db4194bd8dbd50478d5d9ea096d2cdde": {
-    "decalId": "102163997332678",
+    "decalId": "116207537920749",
     "imageId": null,
     "file": "polishedAndisite.png",
     "block": "PolishedAndesite",
     "face": "all"
   },
   "d35e13efb2fae77b4af470f8649cf78f6fd95a565ae22e0815a979a2ad7c073e": {
-    "decalId": "72897229507550",
+    "decalId": "92587468690837",
     "imageId": null,
     "file": "polishedgranite.png",
     "block": "PolishedGranite",
     "face": "all"
   },
   "cfa35ee21c34430a8878592c6989bb98f747f1a7e14ad315666d939b8e7f8d70": {
-    "decalId": "125530239933693",
+    "decalId": "75510100734417",
     "imageId": null,
     "file": "Prismarine.png",
     "block": "Prismarine",
     "face": "all"
   },
   "bc051b12eff5a087fb19396c43d16f89acd85a04acb608c8e6601d4fcb0e9cce": {
-    "decalId": "107704788843297",
+    "decalId": "83080287648680",
     "imageId": null,
     "file": "pumpkinface.png",
     "block": "Pumpkin",
     "face": "side"
   },
   "f51425edcee3121edd14d99a10a91758927685240a06b0fa22b9ba673bb42fbf": {
-    "decalId": "81419238100421",
+    "decalId": "87013698141724",
     "imageId": null,
     "file": "pumpkinside.png",
     "block": "Pumpkin",
     "face": "side"
   },
   "82c838eb6015e26fdc92ec7bc8b4621e5871eac572dad8b7f2b87d31f68395c5": {
-    "decalId": "105668295130875",
+    "decalId": "106426231044307",
     "imageId": null,
     "file": "pumptop.png",
     "block": "Pumpkin",
     "face": "top"
   },
   "e07250350a4b21085ed04ace442611597bfb63bd84e7d08c916464cbf19e966f": {
-    "decalId": "128876634058718",
+    "decalId": "86062917362947",
     "imageId": null,
     "file": "quartz.png",
     "block": "Quartz",
     "face": "all"
   },
   "c2884f61d09898b4d790de07b8f0ebd93bbbc2b09500c3faee6c0cd3cbcb7ccd": {
-    "decalId": "104510832059603",
+    "decalId": "131698625020619",
     "imageId": null,
     "file": "redsand.png",
     "block": "RedSand",
     "face": "all"
   },
   "7bbeff26c831dfa08b3654b11b99d4109b3212b11f3ce01e8b1f78ccd393d5e6": {
-    "decalId": "110688301760738",
+    "decalId": "131997187121211",
     "imageId": null,
     "file": "redsandstone.png",
     "block": "RedSandstone",
     "face": "all"
   },
   "e54f17d3b9018741abcbf0965a7dac29ff0f7f333652753cc6c7e36d1a4be4e7": {
-    "decalId": "111750892476705",
+    "decalId": "137709076642062",
     "imageId": null,
     "file": "redsandstonetop.png",
     "block": "RedSandstone",
     "face": "top"
   },
   "d2c43260b401c0fd73f22c275377e0593deb63ce42062a7a63a3420ccdff034c": {
-    "decalId": "112686335535730",
+    "decalId": "115989814078271",
     "imageId": null,
     "file": "redstone.png",
     "block": "RedstoneBlock",
     "face": "all"
   },
   "93c5a08ed802037773cf6e0ec53d3fe9f40299fdaa876d6594ee1719e70dc289": {
-    "decalId": "124292404142355",
+    "decalId": "113106422664148",
     "imageId": null,
     "file": "restoneore.png",
     "block": "RedstoneOre",
     "face": "all"
   },
   "488987c3479092703c8c7be2c50fdc491c94472a4db008e93a0b31552dc2eda7": {
-    "decalId": "121635829890226",
+    "decalId": "115787004393081",
     "imageId": null,
     "file": "sandstone.png",
     "block": "Sandstone",
     "face": "all"
   },
   "abee43008150f2eb79937d7880b7b4291c949e841655af85c7fd588ba7c2c3fc": {
-    "decalId": "125450024248311",
+    "decalId": "126159935029005",
     "imageId": null,
     "file": "sandstonetop.png",
     "block": "Sandstone",
     "face": "top"
   },
   "1e4412cf96c4e961ac4c235116c92be3fd801c1e98d5706f975444755dfa0073": {
-    "decalId": "87056168784047",
+    "decalId": "130561845077796",
     "imageId": null,
     "file": "smoothstone.png",
     "block": "SmoothStone",
     "face": "all"
   },
   "38034603ee1e85b7f5ab3e3ab50d111ba928a9e816803baca3dc312217d81aaf": {
-    "decalId": "90560687307117",
+    "decalId": "76375156196240",
     "imageId": null,
     "file": "spruceleaf.png",
     "block": "SpruceLeaves",
     "face": "all"
   },
   "7e536d7bd9b71fa2459437b35739c31ae8496b50dfe36e579b6effce4770f256": {
-    "decalId": "115137650789097",
+    "decalId": "85155669812186",
     "imageId": null,
     "file": "spruceplanks.png",
     "block": "SprucePlanks",
     "face": "all"
   },
   "cb4157335f4b99e10d05e9a1a8b1bdc705273cafe4b37a46535d63e5f8aaddb5": {
-    "decalId": "84202487793328",
+    "decalId": "96042358319030",
     "imageId": null,
     "file": "stonebrick.png",
     "block": "StoneBricks",
     "face": "all"
   },
   "86f0316b6c8496ef42c48d985e1798132ba70eee0d27374fac3f3c916f958604": {
-    "decalId": "99181523692921",
+    "decalId": "127998210494168",
     "imageId": null,
     "file": "terracotta.png",
     "block": "Terracotta",
     "face": "all"
   },
   "9bba4b1b99020265bad8a680d9bf2e22a7c00709f62746bd49d996f9c9927afe": {
-    "decalId": "132137735701107",
+    "decalId": "103356700193946",
     "imageId": null,
     "file": "tuff.png",
     "block": "Tuff",
     "face": "all"
   },
   "cfd1ceae6b054ea9f30451a262ca5f08ce06941e09f65d7a16f5562834c4cc50": {
-    "decalId": "70866323764942",
+    "decalId": "97992458669930",
     "imageId": null,
     "file": "wool_white.png",
     "block": "Wool_white",
     "face": "all"
   },
   "bcfb1d179c4eee3b704eb104f9f37332aa8d339c3aa0df4e43cfcd6ef1029c6f": {
-    "decalId": "122796588390098",
+    "decalId": "103128312407763",
     "imageId": null,
     "file": "Concrete_black.png",
     "block": "Concrete_black",
     "face": "all"
   },
   "ee11ea747bba9378fb090bdccdc72ebe14173f638d6d4be9a84f0b629ff176c1": {
-    "decalId": "83302221378108",
+    "decalId": "93426028968228",
     "imageId": null,
     "file": "Concrete_blue.png",
     "block": "Concrete_blue",
     "face": "all"
   },
   "8e76c7e0fd41cefa353c3fda9b5cedc915d6ba966bfbe21fc0ac404caaec7fe3": {
-    "decalId": "134954111256667",
+    "decalId": "119660400106313",
     "imageId": null,
     "file": "Concrete_brown.png",
     "block": "Concrete_brown",
     "face": "all"
   },
   "741d14130c19f0bfcd91c12eccea280d0becb1568ea50559849f11ce5f141ada": {
-    "decalId": "112643343671428",
+    "decalId": "137279545572230",
     "imageId": null,
     "file": "Concrete_cyan.png",
     "block": "Concrete_cyan",
     "face": "all"
   },
   "23ad63bdd5749735c263d337d2f6b549ea6bad9ece5ef3c8815d24f916aa320c": {
-    "decalId": "87303329228732",
+    "decalId": "94713015080094",
     "imageId": null,
     "file": "Concrete_gray.png",
     "block": "Concrete_gray",
     "face": "all"
   },
   "5c5e97e0611a4ea03e54a1ba34603a56693dc114d781f797912f2828619987f8": {
-    "decalId": "100026858644467",
+    "decalId": "83236297767748",
     "imageId": null,
     "file": "Concrete_green.png",
     "block": "Concrete_green",
     "face": "all"
   },
   "44971faf154869519f3c7246948e35183e9cc7b61c09c11bfe75a1ff78d08463": {
-    "decalId": "99595035309609",
+    "decalId": "115765802728393",
     "imageId": null,
     "file": "Concrete_light_blue.png",
     "block": "Concrete_light_blue",
     "face": "all"
   },
   "8289afe933b3930b780fd45ea04bb062d38a8cac1f63bf7db996b56c5a2f1a3e": {
-    "decalId": "130644618906628",
+    "decalId": "95489109323028",
     "imageId": null,
     "file": "Concrete_light_gray.png",
     "block": "Concrete_light_gray",
     "face": "all"
   },
   "9f200c1566cbcfbcd59dfbe3bf6636f5417d154de6970918b4a380cf568dacd1": {
-    "decalId": "122005412049122",
+    "decalId": "96997187403530",
     "imageId": null,
     "file": "Concrete_lime.png",
     "block": "Concrete_lime",
     "face": "all"
   },
   "b04248353cd4d1300865183b7bea08fb74e4b442afc6d125f7a091c38133d41d": {
-    "decalId": "118518506101121",
+    "decalId": "136453385902419",
     "imageId": null,
     "file": "Concrete_magenta.png",
     "block": "Concrete_magenta",
     "face": "all"
   },
   "db7550017e41a1177569bf1cbb3caede6379a072fe2dbfb11183c620caa376c6": {
-    "decalId": "77301232425901",
+    "decalId": "129018705180891",
     "imageId": null,
     "file": "Concrete_orange.png",
     "block": "Concrete_orange",
     "face": "all"
   },
   "9a1cff7bf85f9808626ed0719646bdadb3137087fd3f86937064f6e86c05a7e7": {
-    "decalId": "132916240141639",
+    "decalId": "95852879412638",
     "imageId": null,
     "file": "Concrete_pink.png",
     "block": "Concrete_pink",
     "face": "all"
   },
   "af7a6def5bcd5b8bce00520ae1dd10904d3fc7ba9c6a3372fba37cc8c6c5f9c2": {
-    "decalId": "71475099698733",
+    "decalId": "124632223023674",
     "imageId": null,
     "file": "Concrete_purple.png",
     "block": "Concrete_purple",
     "face": "all"
   },
   "3b06968ba26f27f8c848c24d284347bf98dfb5025616c03f96bd7aaeb4ebd36a": {
-    "decalId": "84157010134332",
+    "decalId": "104123347320896",
     "imageId": null,
     "file": "Concrete_red.png",
     "block": "Concrete_red",
     "face": "all"
   },
   "9d9b5219e7f90ab830e398b23c3c1e03f9966322617405d07a6d95b90c28f8c3": {
-    "decalId": "128805978722436",
+    "decalId": "96862692718702",
     "imageId": null,
     "file": "Concrete_white.png",
     "block": "Concrete_white",
     "face": "all"
   },
   "2013bcc5a1a221d9c1323739e98a14ca844c9322eff7c99d0487257f0875178e": {
-    "decalId": "135292483425512",
+    "decalId": "79780448998836",
     "imageId": null,
     "file": "Concrete_yellow.png",
     "block": "Concrete_yellow",
     "face": "all"
   },
   "176bd16a3c40d0ca92a34a071373181735ce31c6d41581a9d60c95819288178f": {
-    "decalId": "119275403507091",
+    "decalId": "123745209005519",
     "imageId": null,
     "file": "Glass_black.png",
     "block": "Glass_black",
     "face": "all"
   },
   "03b9259c55ee25461c4365fed36bb684907873675c61d24b1acb5afd60e09482": {
-    "decalId": "126957839964815",
+    "decalId": "121166416608810",
     "imageId": null,
     "file": "Glass_blue.png",
     "block": "Glass_blue",
     "face": "all"
   },
   "792f4e5377c43a0a83e6d733c6be5a3cdb0be19242dc2193c5eecb10da2e0623": {
-    "decalId": "122628600015290",
+    "decalId": "122891233209862",
     "imageId": null,
     "file": "Glass_brown.png",
     "block": "Glass_brown",
     "face": "all"
   },
   "91dc406d20ef3800f37c6b8172a1a17519fe27a3b7f499fed20d2ef88232b667": {
-    "decalId": "112389280320981",
+    "decalId": "120019691957402",
     "imageId": null,
     "file": "Glass_cyan.png",
     "block": "Glass_cyan",
     "face": "all"
   },
   "112faeb9af1e27a3d67a582c2b6b5013da35d28febbffc29d5348309937a07f4": {
-    "decalId": "115781088686474",
+    "decalId": "90313294919717",
     "imageId": null,
     "file": "Glass_gray.png",
     "block": "Glass_gray",
     "face": "all"
   },
   "3264671d827660a2a4886904bdc3712c355304710ec96b496a2b5bd0f5a6defa": {
-    "decalId": "127876686984480",
+    "decalId": "118739235976885",
     "imageId": null,
     "file": "Glass_green.png",
     "block": "Glass_green",
     "face": "all"
   },
   "096f6a2751edfe06602ff5862e95c434ed48d9c4b84c619e735c602d0e0928c3": {
-    "decalId": "127160682570961",
+    "decalId": "124851515193171",
     "imageId": null,
     "file": "Glass_light_blue.png",
     "block": "Glass_light_blue",
     "face": "all"
   },
   "a783c78c25192ee1326e2f2b017503e9cecfce07d600c2fade4648914c068058": {
-    "decalId": "84781538323842",
+    "decalId": "112300691790654",
     "imageId": null,
     "file": "Glass_light_gray.png",
     "block": "Glass_light_gray",
     "face": "all"
   },
   "4b354089f7a008068f6c40f405b596cc33f5b4d63db5e53541c890c148c07c11": {
-    "decalId": "101771783599225",
+    "decalId": "96215358325896",
     "imageId": null,
     "file": "Glass_lime.png",
     "block": "Glass_lime",
     "face": "all"
   },
   "4a30aacda883fe4a097fd113813009305bd3e5b7d95c24dbff8d1353bff528db": {
-    "decalId": "95330391931896",
+    "decalId": "79811418158807",
     "imageId": null,
     "file": "Glass_magenta.png",
     "block": "Glass_magenta",
     "face": "all"
   },
   "752701c82276f9e32477996d5277926fa67deb0c68334e33e45dc51ef786d3e0": {
-    "decalId": "113371407007497",
+    "decalId": "96510954852265",
     "imageId": null,
     "file": "Glass_orange.png",
     "block": "Glass_orange",
     "face": "all"
   },
   "b3da60e469ad3583a41b93e55f2769abff624e1f7dbbe586ec9d1cf42483eab7": {
-    "decalId": "80464205694184",
+    "decalId": "112748252829910",
     "imageId": null,
     "file": "Glass_pink.png",
     "block": "Glass_pink",
     "face": "all"
   },
   "7f893538074e8bb56da338b3311ab3ce728c05a06b555b222305f161882e18e4": {
-    "decalId": "116998261182486",
+    "decalId": "103496324160447",
     "imageId": null,
     "file": "Glass_purple.png",
     "block": "Glass_purple",
     "face": "all"
   },
   "069bdf6551b38dbd2fbe37944ac69e1d82b43eb39b67fed211f2971a9126571c": {
-    "decalId": "108169571326172",
+    "decalId": "121974458087746",
     "imageId": null,
     "file": "Glass_red.png",
     "block": "Glass_red",
     "face": "all"
   },
   "b99925866c9652c3523bd1ecf400a4da1872a35efa4035094de33432f367fe4b": {
-    "decalId": "130042411971271",
+    "decalId": "115743670144254",
     "imageId": null,
     "file": "Glass_white.png",
     "block": "Glass_white",
     "face": "all"
   },
   "fa611da0c526e80c3fbcc7fd8e9c0510cd71fa295e8510c6bf53f76735d15ced": {
-    "decalId": "105574544634235",
+    "decalId": "110025011295935",
     "imageId": null,
     "file": "Glass_yellow.png",
     "block": "Glass_yellow",
     "face": "all"
   },
   "24a63a346a84a97e8f4083527504b2cf022bd21ad33d6653605cee1f03196c9e": {
-    "decalId": "94566078857572",
+    "decalId": "87495010742531",
     "imageId": null,
     "file": "Terracotta_black.png",
     "block": "Terracotta_black",
     "face": "all"
   },
   "5922f8c8a9de73deed23a64a6deed26ec1f47aef7d02f42183b2b1025931e01a": {
-    "decalId": "118470218565224",
+    "decalId": "102763782928471",
     "imageId": null,
     "file": "Terracotta_blue.png",
     "block": "Terracotta_blue",
     "face": "all"
   },
   "2de73b16e7ca2784339a0610c8a75db9f2d7c361cabc056da53f695bd3036cc0": {
-    "decalId": "125950994335404",
+    "decalId": "85785032021192",
     "imageId": null,
     "file": "Terracotta_brown.png",
     "block": "Terracotta_brown",
     "face": "all"
   },
   "52be5e3caa23971ea6b0abd83282e6a8b7f44b2c4a436541032c2966f01bf569": {
-    "decalId": "81221511688700",
+    "decalId": "130877389793206",
     "imageId": null,
     "file": "Terracotta_cyan.png",
     "block": "Terracotta_cyan",
     "face": "all"
   },
   "a77d0938b0fd9e5cb787b0805fd5f925f6be8f4aaef6fcdefe0a578d57afc6b1": {
-    "decalId": "86335394116460",
+    "decalId": "83566238692250",
     "imageId": null,
     "file": "Terracotta_gray.png",
     "block": "Terracotta_gray",
     "face": "all"
   },
   "f6c4b6a8cda232adb8b41655fddf55e7c7dc59d5786c72af4f98a8eba73dbecb": {
-    "decalId": "85250521613415",
+    "decalId": "94292946369581",
     "imageId": null,
     "file": "Terracotta_green.png",
     "block": "Terracotta_green",
     "face": "all"
   },
   "f0132bfb490e14dda8ccbac2108b159f17a5514babac57f7126dce935b104216": {
-    "decalId": "129171177014710",
+    "decalId": "84582021705660",
     "imageId": null,
     "file": "Terracotta_light_blue.png",
     "block": "Terracotta_light_blue",
     "face": "all"
   },
   "fe31c05489fb70f884217c0043b859fa04d9aa7b18b50643c8a9097155859589": {
-    "decalId": "79225360946860",
+    "decalId": "138202742587412",
     "imageId": null,
     "file": "Terracotta_light_gray.png",
     "block": "Terracotta_light_gray",
     "face": "all"
   },
   "7ff78d085bbc3a679d154ee3442b010a0fbba5fc5b41f2959599cb17505684c2": {
-    "decalId": "92321352198823",
+    "decalId": "102265188329758",
     "imageId": null,
     "file": "Terracotta_lime.png",
     "block": "Terracotta_lime",
     "face": "all"
   },
   "334be84b3974a40f1e658190fbeacc1f957c84782c9dc2c3d52f36513d69dabe": {
-    "decalId": "95195197256099",
+    "decalId": "137309549755362",
     "imageId": null,
     "file": "Terracotta_magenta.png",
     "block": "Terracotta_magenta",
     "face": "all"
   },
   "773eae6713758f3ff6d4486aeb06d30e9c8fcaac873bd7e19cd362fc813dd179": {
-    "decalId": "113883048616144",
+    "decalId": "99986246573264",
     "imageId": null,
     "file": "Terracotta_orange.png",
     "block": "Terracotta_orange",
     "face": "all"
   },
   "b697f0e7244559e8f8145c4da79de55e6c83bb04c22263beca89997057d04d44": {
-    "decalId": "108638933808508",
+    "decalId": "117902041858701",
     "imageId": null,
     "file": "Terracotta_pink.png",
     "block": "Terracotta_pink",
     "face": "all"
   },
   "84659764ad7a66c2a88ccf79730f2403163e181df38938dada3273263cf0f498": {
-    "decalId": "130657078231938",
+    "decalId": "132772704068255",
     "imageId": null,
     "file": "Terracotta_purple.png",
     "block": "Terracotta_purple",
     "face": "all"
   },
   "2b244371e4a2b32a4790974c7723951a2fb3ab2646c67f620d70b568a56e8630": {
-    "decalId": "84406555930419",
+    "decalId": "113322752439477",
     "imageId": null,
     "file": "Terracotta_red.png",
     "block": "Terracotta_red",
     "face": "all"
   },
   "cfa6397e17e6d73650982d991f1d041ff7eefb6eb3baaf59b3231ae185999592": {
-    "decalId": "112971145404337",
+    "decalId": "130420311392400",
     "imageId": null,
     "file": "Terracotta_white.png",
     "block": "Terracotta_white",
     "face": "all"
   },
   "04c614211459232a2a751262cb43ac57cd0299c22d3cc1f3c786304711ebd912": {
-    "decalId": "100554720669633",
+    "decalId": "119080205833453",
     "imageId": null,
     "file": "Terracotta_yellow.png",
     "block": "Terracotta_yellow",
     "face": "all"
   },
   "5397648f33f73163b4a2099261715fb93e85f6a2d45203193b604023f5b6d90b": {
-    "decalId": "137768947309911",
+    "decalId": "110425388008358",
     "imageId": null,
     "file": "Wool_black.png",
     "block": "Wool_black",
     "face": "all"
   },
   "36930b70cf158e73cc9468f0ebae741978fa176d3867cafd3747f7619f6024c6": {
-    "decalId": "75748063480283",
+    "decalId": "87252065340457",
     "imageId": null,
     "file": "Wool_blue.png",
     "block": "Wool_blue",
     "face": "all"
   },
   "06d4f5e518345cc882f48abe833bba5ef90407c307147d64dd4bdcb84e8cd854": {
-    "decalId": "108376861803179",
+    "decalId": "78366423816813",
     "imageId": null,
     "file": "Wool_brown.png",
     "block": "Wool_brown",
     "face": "all"
   },
   "7b1ab775fa78400fff1000ffe8abff007b653f8cd93c16671f421de1153133a4": {
-    "decalId": "112216292888297",
+    "decalId": "108881176288248",
     "imageId": null,
     "file": "Wool_cyan.png",
     "block": "Wool_cyan",
     "face": "all"
   },
   "379a195b6d4cdab1a5c48e6657fe2f1bfaac17cc1f9af106dd0742ccb2e412f2": {
-    "decalId": "82684020041207",
+    "decalId": "102842664728771",
     "imageId": null,
     "file": "Wool_gray.png",
     "block": "Wool_gray",
     "face": "all"
   },
   "8aa2578a5cc285cb8bc8102141c758785d45641967da6891605a3079f5cce8e9": {
-    "decalId": "120517812290415",
+    "decalId": "94984896260618",
     "imageId": null,
     "file": "Wool_green.png",
     "block": "Wool_green",
     "face": "all"
   },
   "e058f96965229c91c8d5fa2fd2d3072ca55cedf5b00a1cdbc66076e23557f465": {
-    "decalId": "123973721262267",
+    "decalId": "111435921303116",
     "imageId": null,
     "file": "Wool_light_blue.png",
     "block": "Wool_light_blue",
     "face": "all"
   },
   "39a9bc6be54a64b9d767ef2aef0919d1febea2005dd0488ca2182074d2ceebf1": {
-    "decalId": "114964244218609",
+    "decalId": "85090321098739",
     "imageId": null,
     "file": "Wool_light_gray.png",
     "block": "Wool_light_gray",
     "face": "all"
   },
   "e52b79fdc4aa31b17415978f9c2397c802505e0f3064135e8ba055947c4edbaf": {
-    "decalId": "97806809721826",
+    "decalId": "140421476354311",
     "imageId": null,
     "file": "Wool_lime.png",
     "block": "Wool_lime",
     "face": "all"
   },
   "aae41cede5f4023d42e2836442ff32ef64a5dde23d6d60901a05e9a87f4a0c8e": {
-    "decalId": "90254817878975",
+    "decalId": "90611780917944",
     "imageId": null,
     "file": "Wool_magenta.png",
     "block": "Wool_magenta",
     "face": "all"
   },
   "50fa8e8c065fc59d23dd7e2461cfa70fb2708e05457bde5c4d8b1d14012322c2": {
-    "decalId": "122908393747738",
+    "decalId": "88605949942142",
     "imageId": null,
     "file": "Wool_orange.png",
     "block": "Wool_orange",
     "face": "all"
   },
   "58617b77d758ac7cf76646b0f12f35d5e4d62d230eceebda64227234d5751388": {
-    "decalId": "116280892052205",
+    "decalId": "126880007587417",
     "imageId": null,
     "file": "Wool_pink.png",
     "block": "Wool_pink",
     "face": "all"
   },
   "327ff2b92d073648db38ac8ec8621e53eb05cdeb1345373f01bee09fe6c1dae0": {
-    "decalId": "129738062852784",
+    "decalId": "124609858445502",
     "imageId": null,
     "file": "Wool_purple.png",
     "block": "Wool_purple",
     "face": "all"
   },
   "6aa193848066771ced845c1a689a77a73328452fa8cbe502bca8316ff6eb281d": {
-    "decalId": "79552292876093",
+    "decalId": "104543528591998",
     "imageId": null,
     "file": "Wool_red.png",
     "block": "Wool_red",
     "face": "all"
   },
   "1693676418960049a6efa045a60078872f761090727ff05af8c039efb8ca7b3b": {
-    "decalId": "113477438451242",
+    "decalId": "95998672391698",
     "imageId": null,
     "file": "Wool_white.png",
     "block": "Wool_white",
     "face": "all"
   },
   "8edbf37093c2877d78beede11dcbfda04de0306c96519396df298d67d3a25715": {
-    "decalId": "137839276468108",
+    "decalId": "110865748592487",
     "imageId": null,
     "file": "Wool_yellow.png",
     "block": "Wool_yellow",

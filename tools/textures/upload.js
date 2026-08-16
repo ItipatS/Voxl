@@ -227,7 +227,11 @@ async function apiFetch(url, init = {}, tries = 5) {
 async function uploadImage(entry) {
   const form = new FormData();
   form.append("request", JSON.stringify({
-    assetType: "Decal", // the Open Cloud value for a 2D image
+    // "Image", NOT "Decal". A Decal WRAPS an image rather than being one, so its id
+    // does not work in Texture.Texture — and Open Cloud will not tell you what image
+    // is inside (asset-delivery 403s even for your own asset). "Image" hands back the
+    // id you actually need. This cost a full re-upload to learn.
+    assetType: "Image",
     displayName: `voxl_${entry.block}_${entry.face}`,
     description: `Voxl block texture (${entry.file})`,
     creationContext: { creator: GROUP ? { groupId: String(GROUP) } : { userId: String(USER) } },

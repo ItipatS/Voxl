@@ -29,7 +29,9 @@ local ACCEL = 6 -- velocity lerp rate, as in FlightController
 local UIController: any = nil
 task.spawn(function()
 	local ok, mod = pcall(function()
-		return require(script.Parent:WaitForChild("UI"):WaitForChild("UIController")) :: any
+		-- the module is UI.Controller; "UIController" is the name it goes by in docs,
+		-- not the name of the instance, and waiting for it yielded forever
+		return require(script.Parent:WaitForChild("UI"):WaitForChild("Controller")) :: any
 	end)
 	if ok then
 		UIController = mod

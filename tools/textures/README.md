@@ -87,16 +87,21 @@ Three places, in order of precedence:
 for ids with no source file, and prefer `known.json` for anything new: it's
 machine-readable, so the uploader can act on it.
 
-## Decal ids
+## Upload as Image, never as Decal
 
-Uploading an image returns a **decal** id, and `rbxassetid://<decalId>` resolves
-fine for assets **you** uploaded — which is every texture here. So that's what gets
-written, and there's nothing to work around.
+`assetType` is **`"Image"`**. This matters more than it sounds.
 
-The caveat only bites across accounts: a decal id used by someone who doesn't own
-it can fail to resolve. If that ever applies, `--resolve-image-id` digs the
-underlying **image** id out of the decal instead (two extra requests per file). You
-almost certainly don't need it.
+A **Decal wraps an image, it is not one** — so a decal id does not work in
+`Texture.Texture`, and the block renders as bare colour + material. Worse, Open
+Cloud will not tell you which image is inside: `asset-delivery` returns 403 even
+for an asset you own, and the public endpoint wants a cookie. A decal id is a dead
+end you cannot recover from without uploading again.
+
+`assetType: "Image"` returns the id you actually want, first time.
+
+**Symptom to recognise:** textures uploaded by hand through Studio work (Studio
+creates Images) while everything uploaded by script does not. That is not
+moderation and not a sync problem — it is this.
 
 ## What still needs a texture
 
