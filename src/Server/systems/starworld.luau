@@ -192,7 +192,36 @@ local function nearestStandable(sx: number, sz: number, limit: number): (number?
 	return nil
 end
 
-local function positionSpawn(baked: any)
+-- A procedural star has no authored scene, so guarantee a spawn anchor exists
+-- (functional infrastructure, not decorative content) — else players drop into the
+-- void on join.
+local function ensureSpawnPart(): SpawnLocation
+	local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation")
+	if not spawn then
+		spawn = Instance.new("SpawnLocation")
+		spawn.Name = "StarSpawn"
+		spawn.Size = Vector3.new(6, 1, 6)
+		spawn.Transparency = 1
+		spawn.CanCollide = false
+		spawn.Neutral = true
+		spawn.Parent = Workspace
+	end
+	spawn.Anchored = true
+	return spawn :: SpawnLocation
+end
+
+local function positionSpawn(baked: any, mapName: string?)
+	-- An authored spawn (starconfig.MAP_SPAWN) is a spot someone stood on and liked,
+	-- so it is taken as given — no standable scan, no ring fallback. Those exist to
+	-- rescue a MECHANICAL guess; second-guessing a human one just moves them off it.
+	local authored = if mapName then starconfig.MAP_SPAWN[mapName] else nil
+	if authored then
+		local spawn = ensureSpawnPart()
+		spawn.CFrame = CFrame.new(authored)
+		print(`[starworld] spawn at the authored point for "{mapName}" ({authored})`)
+		return
+	end
+
 	local wx, wz, surfaceY
 	if baked and baked.spawn then
 		-- A baked map ships its own landing spot (picked at bake time: dry, flat,
@@ -213,19 +242,7 @@ local function positionSpawn(baked: any)
 	else
 		wx, wz, surfaceY = findSpawnColumn(WorldGen.isStar() and (starconfig.get().radius) or 96)
 	end
-	local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation")
-	if not spawn then
-		-- A procedural star has no authored scene, so guarantee a spawn anchor exists (functional
-		-- infrastructure, not decorative content) — else players drop into the void on join.
-		spawn = Instance.new("SpawnLocation")
-		spawn.Name = "StarSpawn"
-		spawn.Size = Vector3.new(6, 1, 6)
-		spawn.Transparency = 1
-		spawn.CanCollide = false
-		spawn.Neutral = true
-		spawn.Parent = Workspace
-	end
-	spawn.Anchored = true
+	local spawn = ensureSpawnPart()
 	spawn.CFrame = CFrame.new(
 		wx * WorldGen.BLOCK_SIZE,
 		(surfaceY + 1) * WorldGen.BLOCK_SIZE + SPAWN_CLEARANCE,
@@ -322,7 +339,7 @@ local function configure(data: any)
 	-- Publish the config, plus (for a baked star) the few numbers a client needs to
 	-- make sense of the chunks it will be sent.
 	starconfig.set(seed, radius, biomes, map, if bakedMap then PrebakedMap.encodeMeta(bakedMap.meta) else nil)
-	positionSpawn(baked)
+	positionSpawn(baked, map)
 	configured = true
 
 	-- Say out loud which world this is. "Nothing renders" has too many possible

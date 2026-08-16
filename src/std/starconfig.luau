@@ -79,6 +79,21 @@ function M.get(): StarCfg
 	}
 end
 
+-- AUTHORED SPAWN POINTS, in STUDS, per baked map.
+--
+-- A bake picks its spawn mechanically — the most central dry, flat column it can
+-- find — which is fine for "don't drop the player in the sea" and no good at all for
+-- landing somewhere worth arriving at. This is a spot chosen by eye in the real
+-- world, and it wins over the baked guess.
+--
+-- It lives here rather than in the map data because the map data is GENERATED
+-- (tools/mcimport writes it, and a re-bake would erase a hand edit), and it is in
+-- studs rather than blocks because that is how you read a position off a character
+-- standing in the place you liked.
+M.MAP_SPAWN = {
+	FantasyMedieval = Vector3.new(735.405, 617.873, -994.869),
+} :: { [string]: Vector3 }
+
 -- SERVER: the baked-map module for a config, or nil. It lives in ServerStorage, so
 -- this only ever resolves on the server — which is the point. An unknown name is a
 -- loud warning and a fall back to procedural, rather than a star nobody can enter.
