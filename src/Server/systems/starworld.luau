@@ -13,7 +13,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
+local Lighting = game:GetService("Lighting")
+
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
+local Blocks = require(ReplicatedStorage.Misc.Blocks)
 local PrebakedMap = require(ReplicatedStorage.Misc.PrebakedMap)
 local starconfig = require(ReplicatedStorage.std.starconfig)
 local constellation = require(ReplicatedStorage.std.constellation)
@@ -30,6 +33,23 @@ local SPAWN_CLEARANCE = 5
 -- meshed, holding the loading screen up meanwhile. Freezing is recoverable; not
 -- spawning is not.
 Players.CharacterAutoLoads = true
+
+-- DAYLIGHT. The lobby is deep space, so its Lighting is permanent night — and the
+-- star place inherits that same authored Lighting, which is why the ground world
+-- is pitch black. A star is a place with a sun in the sky, so set day on arrival.
+-- Server-side Lighting replicates, so this is one place to change. A real
+-- day/night cycle can drive ClockTime later; this just stops it being unplayable.
+local function setDaylight()
+	Lighting.ClockTime = 14 -- early afternoon: long enough shadows to read depth
+	Lighting.GeographicLatitude = 20
+	Lighting.Brightness = 2.5
+	Lighting.Ambient = Color3.fromRGB(90, 95, 105)
+	Lighting.OutdoorAmbient = Color3.fromRGB(130, 140, 155)
+	Lighting.EnvironmentDiffuseScale = 0.6
+	Lighting.EnvironmentSpecularScale = 0.4
+	Lighting.GlobalShadows = true
+end
+setDaylight()
 
 local configured = false
 
@@ -57,12 +77,61 @@ local function findSpawnColumn(radiusBlocks: number): (number, number, number)
 	return bestX, bestZ, bestY
 end
 
+-- Is this column somewhere a player can actually stand? A column top of -1 is void,
+-- and a top made of water or lava is a drowning, not a landing.
+local function standable(wx: number, wz: number): (boolean, number)
+	local top, biome = WorldGen.getColumn(wx, wz)
+	if top < 0 then
+		return false, top
+	end
+	local block = WorldGen.blockAt(wx, top, wz, top, biome)
+	if block == 0 or not Blocks.isSolid(block) then
+		return false, top
+	end
+	return true, top
+end
+
+-- Spiral out from a starting column until we find ground. The bake picks a spawn
+-- from the SOURCE data, but the world that ships has been clipped at the y floor
+-- and disc-cropped since, so the picked column can end up void — and a spawn in
+-- void is a fall to your death before you can even look around.
+local function nearestStandable(sx: number, sz: number, limit: number): (number?, number?, number?)
+	local ok, top = standable(sx, sz)
+	if ok then
+		return sx, sz, top
+	end
+	for r = 2, limit, 2 do
+		for i = 0, 11 do
+			local a = (i / 12) * math.pi * 2
+			local wx = sx + math.floor(math.cos(a) * r)
+			local wz = sz + math.floor(math.sin(a) * r)
+			local good, t = standable(wx, wz)
+			if good then
+				return wx, wz, t
+			end
+		end
+	end
+	return nil
+end
+
 local function positionSpawn(baked: any)
 	local wx, wz, surfaceY
 	if baked and baked.spawn then
 		-- A baked map ships its own landing spot (picked at bake time: dry, flat,
-		-- as central as the map allows). Its own geography beats any ring scan.
-		wx, wz, surfaceY = baked.spawn.x, baked.spawn.z, baked.spawn.y
+		-- as central as the map allows) — but verify it before trusting it.
+		local fx, fz, ft = nearestStandable(baked.spawn.x, baked.spawn.z, 160)
+		if fx and fz and ft then
+			wx, wz, surfaceY = fx, fz, ft
+			if fx ~= baked.spawn.x or fz ~= baked.spawn.z then
+				warn(
+					`[starworld] baked spawn ({baked.spawn.x},{baked.spawn.z}) is not standable — `
+						.. `moved to ({fx},{fz}) top {ft}`
+				)
+			end
+		else
+			warn("[starworld] no standable ground near the baked spawn — falling back to a ring scan")
+			wx, wz, surfaceY = findSpawnColumn(baked.radius or 96)
+		end
 	else
 		wx, wz, surfaceY = findSpawnColumn(WorldGen.isStar() and (starconfig.get().radius) or 96)
 	end

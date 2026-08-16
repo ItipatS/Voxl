@@ -32,6 +32,7 @@ if placemode.Mode == "ResourceStar" then
 	-- + build/gather. (Biome-locking + regional seed come next.)
 	req("StarWorld") -- configure WorldGen for this star's bounded world BEFORE terrain generates
 	req("ChunkClient")
+	req("StarFly") -- F to fly: the only practical way to survey an 896-block map
 	req("Prompts") -- styled ProximityPrompt UI (expressive-prompts) for world interactions
 	req("UI") -- the UI framework (Controller/Sound/Tween/Notifier + registry bootstrap) — doc 19
 	req("BlockInventory")

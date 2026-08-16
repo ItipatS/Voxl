@@ -233,6 +233,8 @@ local function neighboursKnown(cx: number, cz: number): boolean
 end
 
 local candidates = {} -- reused each frame: unmeshed chunks to build
+local failedChunks: { [string]: boolean } = {}
+local meshErrorReported = false
 
 local function distToPlayer(key: string, pcx: number, pcz: number): number
     local chunk = ClientWorld[key]
@@ -311,7 +313,21 @@ RunService.RenderStepped:Connect(function()
     local deadline = os.clock() + MESH_TIME_BUDGET
     for n = 1, math.min(#candidates, MAX_CHUNK_PER_FRAME) do
         local c = candidates[n]
-        MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks)
+        -- One bad chunk must not take the renderer with it. This runs inside a
+        -- RenderStepped connection, and an error here DISCONNECTS it — so a single
+        -- malformed chunk would stop all meshing permanently, which reads exactly
+        -- like "it renders a few chunks near spawn and then stops forever".
+        local ok, err = pcall(function()
+            MeshedChunks[c.key] = ChunkMesher.BuildChunk(ClientWorld[c.key], Chunks)
+        end)
+        if not ok then
+            failedChunks[c.key] = true
+            ClientWorld[c.key] = nil -- don't retry it every frame
+            if not meshErrorReported then
+                meshErrorReported = true
+                warn(`[ChunkClient] chunk {c.key} failed to mesh: {err}`)
+            end
+        end
         if os.clock() >= deadline then
             break
         end
