@@ -5,9 +5,11 @@
 -- (we wait until the world is configured, so nobody spawns into the void). Direct/Studio joins
 -- with no teleport data fall back to the TEST star.
 --
--- One star per server (single-live per starId). The MemoryStore reserved-server routing —
--- sending every visitor of a starId to the SAME server — layers on top of this later; for now
--- each entry configures this server from the joiner's data.
+-- One star per server (single-live per starId). `StarRouting` in the lobby pins each
+-- star to a reserved server, so everyone entering the same world arrives HERE — which
+-- is what makes "configure from the first joiner" correct rather than a race. This
+-- server keeps its own MemoryStore mapping alive while anyone is home, and says so
+-- loudly if a player ever turns up for a different star.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,6 +22,7 @@ local Blocks = require(ReplicatedStorage.Misc.Blocks)
 local PrebakedMap = require(ReplicatedStorage.Misc.PrebakedMap)
 local starconfig = require(ReplicatedStorage.std.starconfig)
 local constellation = require(ReplicatedStorage.std.constellation)
+local StarRouting = require(script.Parent.StarRouting)
 
 local SPAWN_CLEARANCE = 5
 
@@ -124,6 +127,9 @@ end
 setWater()
 
 local configured = false
+-- Which star this server IS, once someone has arrived for one. Used to notice a
+-- player who was routed here for a different world.
+local liveStarId: string? = nil
 
 -- The island heart is (by design) the star's rarest, often tallest/wildest biome — a bad place
 -- to drop a player. Scan the centre + a couple of rings and pick the LOWEST solid (non-void)
@@ -345,9 +351,6 @@ end
 -- index decode — so the world is normally ready before anyone can see it. If it
 -- ever isn't, the client's freeze covers the gap rather than a missing character.
 local function onPlayer(plr: Player)
-	if configured then
-		return
-	end
 	local ok, data = pcall(function()
 		return plr:GetJoinData().TeleportData
 	end)
@@ -355,8 +358,31 @@ local function onPlayer(plr: Player)
 		-- A failed read and a direct Studio join both end up at the fallback, and
 		-- they are very different situations: one means the handoff broke.
 		warn(`[starworld] could not read teleport data for {plr.Name}: {data}`)
+		data = nil
 	end
-	configure(if ok then data else nil)
+
+	if configured then
+		-- Routing (StarRouting) pins each star to one reserved server, so everyone
+		-- who lands here should be here for the SAME world. If they are not, the
+		-- routing failed and this player is about to spend the session in someone
+		-- else's star with no way to tell — the one case worth shouting about.
+		if data and data.starId and data.starId ~= liveStarId then
+			warn(`[starworld] {plr.Name} arrived for star '{data.starId}' but this server `
+				.. `is '{tostring(liveStarId)}' — reserved-server routing did not hold`)
+		end
+		return
+	end
+
+	if data and data.starId then
+		liveStarId = data.starId
+		-- Keep this star's MemoryStore mapping alive while anyone is home. Without
+		-- it a star busy for longer than the TTL loses its entry, and the next
+		-- arrival opens a second copy of a world people are standing in.
+		if data.starAccess then
+			StarRouting.keepAlive(data.starId, data.starAccess)
+		end
+	end
+	configure(data)
 end
 
 Players.PlayerAdded:Connect(onPlayer)
