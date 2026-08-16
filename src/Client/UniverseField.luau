@@ -17,6 +17,7 @@ local std = ReplicatedStorage:WaitForChild("std")
 local universe = require(std:WaitForChild("universe"))
 local blink = require(std:WaitForChild("ClientNet"))
 local transition = require(std:WaitForChild("transition"))
+local constellation = require(std:WaitForChild("constellation"))
 
 local player = Players.LocalPlayer
 
@@ -109,7 +110,10 @@ local cells: { [string]: { Instance } } = {} -- cellKey -> instances (0 or 1 sta
 -- Distance readouts for the stars currently rendered. Entries whose label has been
 -- destroyed (its cell unloaded) are dropped on the next pass, so this never needs
 -- unhooking from unloadCell.
-type Tracked = { label: TextLabel, pos: Vector3, landmark: boolean }
+-- `radius` is subtracted from the reported distance, so the number is range to the
+-- thing's SURFACE. A hub proxy has no real surface, so it uses 0 and reports range
+-- to the point.
+type Tracked = { label: TextLabel, pos: Vector3, radius: number }
 local tracked: { Tracked } = {}
 
 local function cellKey(cx: number, cy: number, cz: number): string
@@ -203,7 +207,7 @@ local function makeStar(star: universe.Star): Instance
 	-- the same dot. Updated on an interval below.
 	local distLbl = label(bb, 0.74, 0.26, Color3.fromRGB(160, 175, 195))
 	distLbl.Text = ""
-	tracked[#tracked + 1] = { label = distLbl, pos = star.pos, landmark = isLandmark }
+	tracked[#tracked + 1] = { label = distLbl, pos = star.pos, radius = STAR_SIZE * 0.5 }
 
 	-- Enter prompt (expressive-prompts renders Style=Custom, via Prompts.luau). Appears when
 	-- you fly up to the planet; the server (starentry) validates + teleports into this star.
@@ -276,6 +280,58 @@ local function refreshCells(cx: number, cy: number, cz: number)
 	end
 end
 
+-- ===== hub-town signs =====
+-- The 5 starter stars are drawn by SpaceProxies as camera-locked PROXIES: fake
+-- objects held a fixed distance in front of you and scaled to fake depth. A label
+-- adorned to one would inherit that lie and report a few hundred studs no matter
+-- where you were. So these are separate, real markers at the stars' TRUE positions
+-- — an invisible anchor each, carrying the same billboard the frontier stars use.
+local function starterName(template: string): string
+	-- "MountainStar" -> "Mountain Star" (proper hub-town names arrive with the
+	-- naming pass — DESIGN.md)
+	return (template:gsub("(%l)(%u)", "%1 %2"))
+end
+
+local function makeSigns()
+	local signs = Instance.new("Folder")
+	signs.Name = "Signs"
+	signs.Parent = folder
+
+	for _, L in constellation.LANDMARKS do
+		local isMaw = L.template == "BlackHole"
+		local anchor = Instance.new("Part")
+		anchor.Name = `Sign_{L.template}`
+		anchor.Anchored = true
+		anchor.CanCollide = false
+		anchor.CanQuery = false
+		anchor.CanTouch = false
+		anchor.CastShadow = false
+		anchor.Locked = true
+		anchor.Transparency = 1
+		anchor.Size = Vector3.one
+		anchor.Position = L.pos
+		anchor.Parent = signs
+
+		local bb = Instance.new("BillboardGui")
+		bb.Name = "Sign"
+		bb.Adornee = anchor
+		bb.Size = UDim2.fromOffset(300, 84)
+		bb.AlwaysOnTop = true
+		bb.LightInfluence = 0
+		bb.MaxDistance = LANDMARK_RADIUS -- these are the things you navigate BY
+		bb.Parent = anchor
+
+		local tint = if isMaw then Color3.fromRGB(255, 120, 90) else Color3.fromRGB(255, 225, 150)
+		local nameLbl = label(bb, 0, 0.6, tint)
+		nameLbl.Text = if isMaw then "☀ THE MAW" else `★ {starterName(L.template)}`
+		local distLbl = label(bb, 0.62, 0.38, Color3.fromRGB(160, 175, 195))
+		distLbl.Text = ""
+		-- radius 0: for a hub or the maw the useful number is range to the point,
+		-- not to a surface (the proxy has no real one)
+		tracked[#tracked + 1] = { label = distLbl, pos = L.pos, radius = 0 }
+	end
+end
+
 -- "12,480 studs" reads worse than "12.5k" at a glance while flying.
 local function studs(d: number): string
 	if d >= 10000 then
@@ -292,7 +348,7 @@ local function updateDistances(from: Vector3)
 			local d = (t.pos - from).Magnitude
 			-- Subtract the orb's radius so the number is distance to the SURFACE —
 			-- "0" should mean you've arrived, not that you're inside the planet.
-			local surface = math.max(0, d - STAR_SIZE * 0.5)
+			local surface = math.max(0, d - t.radius)
 			t.label.Text = if surface < 1 then "arrived" else studs(surface)
 			tracked[write] = t
 			write += 1
@@ -302,6 +358,8 @@ local function updateDistances(from: Vector3)
 		tracked[i] = nil -- its cell unloaded
 	end
 end
+
+makeSigns() -- the hubs and the maw are fixed, so they're built once and never unloaded
 
 local lastCenter: string? = nil
 local sinceDistance = 0

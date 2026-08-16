@@ -15,6 +15,7 @@
 -- playing Forward; Space/Shift are pure vertical thrust with their own anims.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
@@ -102,12 +103,26 @@ local function setup(character: Model)
 	-- Spawn RANDOMLY in the cluster (the residential annulus): outside the black hole,
 	-- well inside the far starter-star ring — so you start among the plots, not on a
 	-- star. Face OUTWARD (toward the ring/open space), away from the central hazard.
-	local bh = constellation.BLACKHOLE
+	--
+	-- Unless the server published a dev spawn (systems/devspawn), in which case start
+	-- there instead. This has to happen HERE: the client owns the character, so
+	-- placing it server-side just gets overwritten by the line below a frame later.
 	local center = constellation.CENTER
-	local ang = math.random() * math.pi * 2
-	local r = bh.radius + 2500 + math.random() * 7000
-	local spawnPos = center + Vector3.new(math.cos(ang) * r, math.random(-2500, 2500), math.sin(ang) * r)
-	hrp.CFrame = CFrame.lookAt(spawnPos, spawnPos + (spawnPos - center))
+	local devPos = ReplicatedStorage:GetAttribute("DevSpawnPos")
+	local spawnPos: Vector3
+	local lookAt: Vector3
+	if typeof(devPos) == "Vector3" then
+		local devLook = ReplicatedStorage:GetAttribute("DevSpawnLook")
+		spawnPos = devPos
+		lookAt = if typeof(devLook) == "Vector3" then devLook else center
+	else
+		local bh = constellation.BLACKHOLE
+		local ang = math.random() * math.pi * 2
+		local r = bh.radius + 2500 + math.random() * 7000
+		spawnPos = center + Vector3.new(math.cos(ang) * r, math.random(-2500, 2500), math.sin(ang) * r)
+		lookAt = spawnPos + (spawnPos - center) -- outward, away from the central hazard
+	end
+	hrp.CFrame = CFrame.lookAt(spawnPos, lookAt)
 	ao.CFrame = hrp.CFrame
 
 	-- Load animation tracks (skipped gracefully until you fill ANIM ids).

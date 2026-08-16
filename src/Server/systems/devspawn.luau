@@ -60,6 +60,14 @@ if TARGET then
 				.. `({math.round(OFFSET.Magnitude)} studs out)`
 		)
 
+		-- THE PART THAT ACTUALLY DECIDES WHERE YOU END UP.
+		-- The client owns the character, and FlightController deliberately scatters
+		-- you around the residential annulus on spawn — so a server-side placement
+		-- gets overwritten a frame later. Publish the intent instead and let the
+		-- client honour it, the same way starconfig publishes a star's world.
+		ReplicatedStorage:SetAttribute("DevSpawnPos", pos + OFFSET)
+		ReplicatedStorage:SetAttribute("DevSpawnLook", pos)
+
 		-- Moving the SpawnLocation is NOT enough on its own: if the place has another
 		-- SpawnLocation (authored, or nested somewhere FindFirstChildWhichIsA won't
 		-- reach) Roblox picks between them at random, and you land wherever it felt
