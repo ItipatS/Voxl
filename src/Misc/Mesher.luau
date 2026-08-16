@@ -618,4 +618,10 @@ end
 -- Per-face textures per block id, for UI (hotbar previews) etc.
 ChunkMesher.BlockTextures = BlockTextures
 
+-- Exposed for tools/mcimport/test_mesher.luau, which runs the REAL greedy pass
+-- against a synthetic voxel field to count boxes and assert none of them overlap.
+-- Overlapping boxes are invisible in game except as doubled parts and a frame rate
+-- that makes no sense, so they need a test rather than an eye.
+ChunkMesher._runGreedy3D = runGreedy3D
+
 return ChunkMesher

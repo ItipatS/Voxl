@@ -194,10 +194,13 @@ local function decodeRecord(rec: buffer, yFloor: number): Chunk
         local nRuns = buffer.readu8(rec, q + 1)
         if nRuns > 0 then
             local base = ci * span
-            -- Island interior, but only ISLAND_KEEL deep — everything under that
-            -- stays air, which is what gives the island a bottom to draw.
-            local keel = math.max(yFloor, yBot - ISLAND_KEEL)
-            buffer.fill(blocks, base + (keel - yFloor), STONE, yBot - keel)
+            -- Island interior down to the chunk's SHARED keel level, not to each
+            -- column's own. A per-column keel mirrors the terrain contour, which
+            -- means the underside is a stepped surface with an exposed wall between
+            -- every pair of neighbouring columns — it was generating 27% of all the
+            -- boxes in the world. One flat plane per chunk merges into a handful.
+            -- The extra stone is interior: never exposed, so it costs no parts.
+            buffer.fill(blocks, base + (yBottom - yFloor), STONE, yBot - yBottom)
             local y = yBot - yFloor
             for r = 0, nRuns - 1 do
                 local id = buffer.readu8(rec, q + 2 + r * 2)
