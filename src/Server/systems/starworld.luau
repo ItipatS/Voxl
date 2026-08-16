@@ -20,7 +20,16 @@ local constellation = require(ReplicatedStorage.std.constellation)
 
 local SPAWN_CLEARANCE = 5
 
-Players.CharacterAutoLoads = false
+-- Characters ALWAYS auto-load. This used to switch auto-load off and hand-load one
+-- character per join, so that nobody landed in an unconfigured void — but the cure
+-- was worse: nothing ever reloaded a character, so dying was permanent, and a spawn
+-- that failed for any reason left you with no character at all.
+--
+-- The wait belongs on the client instead, where the terrain actually is: ChunkClient
+-- anchors the character on spawn and only releases it once the chunk under it has
+-- meshed, holding the loading screen up meanwhile. Freezing is recoverable; not
+-- spawning is not.
+Players.CharacterAutoLoads = true
 
 local configured = false
 
@@ -137,12 +146,6 @@ local function configure(data: any)
 	positionSpawn(baked)
 	configured = true
 
-	-- Auto-load goes back ON now that there is a world to spawn into. It is turned
-	-- off at the top of this file so nobody lands in an unconfigured void — but it
-	-- was never turned back on, so dying was permanent: the character never
-	-- reloaded and the session was over. Deaths respawn normally from here.
-	Players.CharacterAutoLoads = true
-
 	-- Say out loud which world this is. "Nothing renders" has too many possible
 	-- causes to guess at from the client alone, and the first question is always
 	-- whether the server even loaded a map.
@@ -164,18 +167,18 @@ local function configure(data: any)
 	end
 end
 
+-- Configure from the FIRST joiner's teleport data. This runs on PlayerAdded, which
+-- fires before their character finishes loading, and configuring is only a header +
+-- index decode — so the world is normally ready before anyone can see it. If it
+-- ever isn't, the client's freeze covers the gap rather than a missing character.
 local function onPlayer(plr: Player)
-	if not configured then
-		local ok, data = pcall(function()
-			return plr:GetJoinData().TeleportData
-		end)
-		configure(if ok then data else nil)
+	if configured then
+		return
 	end
-	-- Once configure() has re-enabled auto-load, later joiners already have a
-	-- character; loading a second one here would throw the first away mid-spawn.
-	if not plr.Character then
-		plr:LoadCharacter()
-	end
+	local ok, data = pcall(function()
+		return plr:GetJoinData().TeleportData
+	end)
+	configure(if ok then data else nil)
 end
 
 Players.PlayerAdded:Connect(onPlayer)

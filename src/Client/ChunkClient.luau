@@ -339,28 +339,53 @@ local function surfaceCFrameAt(x: number, z: number): CFrame?
     return CFrame.new(x, topY + SPAWN_CLEARANCE, z)
 end
 
-local function setupSpawn(char: Model)
-    local root = char:WaitForChild("HumanoidRootPart") :: BasePart
+-- The character ALWAYS auto-loads; it is held still here until the ground under it
+-- exists. That is the opposite of switching CharacterAutoLoads off, which made
+-- death permanent (nothing ever reloaded the character) and put the whole spawn on
+-- a knife edge. Freezing is recoverable; not spawning is not.
+--
+-- `WorldReady` on the local player is how the loading screen knows to stay up. It
+-- goes false on every spawn, including respawns, so a death mid-flight through
+-- unmeshed terrain gets the same treatment as a join.
+local SPAWN_TIMEOUT = 45 -- generous: a baked star streams its terrain over the wire
 
-    -- Place on the ground immediately (deterministic) and freeze so we never
-    -- fall through terrain that hasn't meshed yet.
-    root.Anchored = true
-    local seat = surfaceCFrameAt(root.Position.X, root.Position.Z)
-    if seat then
-        root.CFrame = seat
+local function setupSpawn(char: Model)
+    localPlayer:SetAttribute("WorldReady", false)
+
+    -- WaitForChild, not FindFirstChild: on a fresh spawn the rig is assembled a
+    -- piece at a time and the root is frequently not there yet, which is what made
+    -- the old placement silently do nothing.
+    local root = char:WaitForChild("HumanoidRootPart", 20) :: BasePart?
+    if not root then
+        warn("[ChunkClient] character has no HumanoidRootPart — releasing without seating")
+        localPlayer:SetAttribute("WorldReady", true)
+        return
     end
 
+    root.Anchored = true
+
     task.spawn(function()
+        local t0 = os.clock()
+
+        -- 1) Wait until this column is KNOWN. On a baked star that means its chunk
+        --    has streamed in; on a procedural one it is known immediately.
+        local seat = surfaceCFrameAt(root.Position.X, root.Position.Z)
+        while not seat and root.Parent and os.clock() - t0 < SPAWN_TIMEOUT do
+            task.wait(0.1)
+            seat = surfaceCFrameAt(root.Position.X, root.Position.Z)
+        end
+        if seat and root.Parent then
+            root.CFrame = seat
+        end
+
+        -- 2) Wait for the chunk under us to actually MESH — the mesh parts are the
+        --    collision, so releasing before it exists drops you through the world.
         local pcx, pcz = worldToChunk(root.Position.X, root.Position.Z)
         local key = chunkKey(pcx, pcz)
-
-        -- wait for the chunk under the spawn point to mesh (parts are collision)
-        local t0 = os.clock()
-        while not MeshedChunks[key] and os.clock() - t0 < 15 do
+        while not MeshedChunks[key] and not BlockChunks[key] and root.Parent and os.clock() - t0 < SPAWN_TIMEOUT do
             task.wait(0.1)
         end
 
-        -- Re-seat on the exact surface (in case the spawn XZ moved) and release.
         if root.Parent then
             local ground = surfaceCFrameAt(root.Position.X, root.Position.Z)
             if ground then
@@ -368,7 +393,14 @@ local function setupSpawn(char: Model)
             end
             task.wait()
             root.Anchored = false
+            if not MeshedChunks[key] and not BlockChunks[key] then
+                warn(
+                    `[ChunkClient] released after {math.round(os.clock() - t0)}s with no mesh under `
+                        .. `chunk {key} — expect a fall. Terrain never arrived.`
+                )
+            end
         end
+        localPlayer:SetAttribute("WorldReady", true)
     end)
 end
 

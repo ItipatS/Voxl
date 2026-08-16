@@ -74,12 +74,13 @@ if TARGET then
 		-- pick, and the character is placed outright once it exists.
 		local function place(plr: Player, char: Model)
 			plr.RespawnLocation = spawn :: SpawnLocation
-			local root = char:FindFirstChild("HumanoidRootPart")
-			if not root then
-				root = char:WaitForChild("HumanoidRootPart", 5)
-			end
+			-- A rig is parented before it is fully assembled, so the root is often
+			-- not there for the first few frames; waiting is the only reliable read.
+			local root = char:WaitForChild("HumanoidRootPart", 10)
 			if root and root:IsA("BasePart") then
 				char:PivotTo(target + Vector3.new(0, 5, 0))
+			else
+				warn(`[devspawn] {plr.Name} has no HumanoidRootPart after 10s — not placed`)
 			end
 		end
 

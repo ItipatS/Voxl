@@ -32,8 +32,16 @@ local function playersAdded(player: Player)
 		while rig.Parent ~= workspace do
 			task.wait()
 		end
-		rig.Humanoid.WalkSpeed = WALK_SPEED
-		rig.Humanoid.JumpHeight = JUMP_HEIGHT
+		-- WaitForChild, not a direct index: a rig is parented before it is fully
+		-- assembled, so `rig.Humanoid` is intermittently nil here and the whole
+		-- handler throws — taking the Character component with it.
+		local humanoid = rig:WaitForChild("Humanoid", 10) :: Humanoid?
+		if humanoid then
+			humanoid.WalkSpeed = WALK_SPEED
+			humanoid.JumpHeight = JUMP_HEIGHT
+		else
+			warn(`[players] {player.Name} spawned a rig with no Humanoid after 10s`)
+		end
 		world:set(e, Character, rig)
 	end)
 end

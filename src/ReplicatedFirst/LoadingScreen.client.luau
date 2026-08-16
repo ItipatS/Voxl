@@ -52,7 +52,19 @@ if placemode.Mode == "ResourceStar" then
 	end
 	local char = player.Character or player.CharacterAdded:Wait()
 	char:WaitForChild("HumanoidRootPart", 8)
-	task.wait(0.4) -- a beat for nearby terrain to mesh in
+
+	-- Hold until ChunkClient says the ground under the character actually exists.
+	-- This used to be a flat 0.4s, which is a guess: on a baked star the terrain has
+	-- to stream over the wire first, so the reveal landed on empty void and the
+	-- player fell through it. ChunkClient keeps the character anchored for exactly
+	-- this window, so the screen and the freeze lift together.
+	local t0 = os.clock()
+	while not player:GetAttribute("WorldReady") and os.clock() - t0 < 45 do
+		task.wait(0.1)
+	end
+	if not player:GetAttribute("WorldReady") then
+		warn("[LoadingScreen] revealing without a ready world after 45s — terrain never arrived")
+	end
 end
 
 -- Refresh the "explorers here" count now that players have replicated, then iris open.
