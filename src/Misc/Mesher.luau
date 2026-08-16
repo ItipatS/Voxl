@@ -61,6 +61,20 @@ end
 -- its neighbour's facing side only if it is opaque (solid & not transparent).
 local isOpaque = Blocks.isOpaque
 
+-- Does terrain cast shadows at all?
+--
+-- false, and it is not a close call. Shadow casting is the most expensive thing a
+-- part does, and a chunk is ~370 boxes: at render radius 8 that is six figures of
+-- casters. The obvious refinement — only cast from boxes with sky above them —
+-- was measured at 77% of boxes still casting, because in a voxel world most
+-- exposed faces ARE the top of the ground. Removing a quarter of six figures is
+-- not a fix.
+--
+-- Terrain still reads as lit: sun direction shades the faces by their normals, and
+-- GlobalShadows stays on for characters and props, which is where a shadow
+-- actually tells you something. Flip this to true to get the sky-facing rule back.
+local TERRAIN_CASTS_SHADOW = false
+
 local MAGENTA = Color3.fromRGB(255, 0, 255)
 local function applyBlockAppearance(part: BasePart, blockId: number)
     local d = BlockDefs[blockId]
@@ -206,14 +220,26 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
     if span <= 0 then return end
 
     -- Cave-aware solidity grid over x,z in [-1, CS], y in [gLo, maxY] (blockId; 0 = air).
+    --
+    -- `span` is the whole chunk's height, so one cliff or spire makes EVERY column
+    -- pay for it: a chunk spanning a valley floor and a clifftop sampled the empty
+    -- sky above the valley hundreds of times. Each column stops at its own ceiling
+    -- instead — its top, plus canopy room where trees can reach above it — and the
+    -- rest of the grid stays air, which it already was. Same output, far less work,
+    -- and the taller the cliff the more it saves.
     local grid = table.create(slab * span, 0)
-    for ly = 0, span - 1 do
-        local y = gLo + ly
-        local base = ly * slab
-        for z = -1, CS do
-            for x = -1, CS do
-                local i = (x + 1) + (z + 1) * GW + 1
-                grid[i + base] = sample(cx * CS + x, y, cz * CS + z, Hgrid[i], Bgrid[i])
+    local canopy = if hasGrass then TREE_MAX_H else 0
+    for z = -1, CS do
+        for x = -1, CS do
+            local i = (x + 1) + (z + 1) * GW + 1
+            local h = Hgrid[i]
+            if h >= 0 then
+                local ceiling = math.min(maxY, h + canopy)
+                local wx, wz = cx * CS + x, cz * CS + z
+                local bh, bb = h, Bgrid[i]
+                for y = gLo, ceiling do
+                    grid[i + (y - gLo) * slab] = sample(wx, y, wz, bh, bb)
+                end
             end
         end
     end
@@ -353,6 +379,7 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
         part.Size = size
         part.CFrame = CFrame.new(center)
         applyBlockAppearance(part, id)
+        part.CastShadow = TERRAIN_CASTS_SHADOW and ePY
         part.Parent = model
 
         local tex = BlockTextures[id]
@@ -513,6 +540,7 @@ function ChunkMesher.UpdateBlockCell(bc: BlockChunk, wx: number, y: number, wz: 
     end
     sizeCell(part, id, wx, y, wz)
     applyBlockAppearance(part, id)
+    part.CastShadow = TERRAIN_CASTS_SHADOW and ePY -- same rule as the greedy path
     applyCellFaces(part, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
 end
 
@@ -595,6 +623,7 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
                         local part = getPooledPart()
                         sizeCell(part, id, wx, y, wz)
                         applyBlockAppearance(part, id)
+                        part.CastShadow = TERRAIN_CASTS_SHADOW and ePY
                         applyCellFaces(part, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
                         part.Parent = model
                         cells[cellKey(wx, y, wz)] = part
