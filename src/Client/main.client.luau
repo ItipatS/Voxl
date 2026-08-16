@@ -51,10 +51,7 @@ if placemode.Mode == "ResourceStar" then
 	-- the only way to change slots. T toggles first person; Alt+scroll zooms.
 	req("CameraController")
 	req("Music") -- same shuffle playlist as the lobby (SoundService.Musics)
-	-- Day/night. Lives under ClientServices, not src/Client, so it cannot go through
-	-- req() — that only looks in StarterPlayerScripts. Only the star place runs a
-	-- cycle: the lobby is deep space, where permanent night is correct.
-	require(ReplicatedStorage.ClientServices.EventHandler.DayNightRenderer)
+	req("DayNight") -- server clock -> Lighting.ClockTime (the lobby is permanent night)
 else
 	-- LOBBY (The Cluster) — zero-g jet flight, stars, black hole, collectables.
 	req("FlightController")

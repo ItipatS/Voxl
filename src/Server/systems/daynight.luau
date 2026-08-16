@@ -2,20 +2,19 @@
 --!strict
 
 -- The day/night cycle. Server owns the clock and the moon; the client integrates
--- it into Lighting.ClockTime every frame (ClientServices/EventHandler/DayNightRenderer).
+-- it into Lighting.ClockTime every frame (Client/DayNight).
 --
--- This is a REVIVAL, not a new system. The cycle was written months ago and has
--- been dead the whole time — `services/EventManager` was never required by anything,
--- and would have errored on its first line if it had been (it requires
--- `ServerScriptService.net`, which does not exist; the generated module is
--- `ServerNet`). Its moon table survived intact and is reused here unchanged.
+-- This is a REVIVAL. The cycle was written months ago and was dead the whole time:
+-- the old `services/EventManager` was required by nothing, and would have errored on
+-- its first line if it had been (it required `ServerScriptService.net`, which has never
+-- existed — the generated module is `ServerNet`). Only its moon table was worth
+-- keeping; it lives next door in `MoonPhase`, reused unchanged.
 --
--- What is deliberately NOT revived: EventManager's eclipse/blood-moon events, storm
--- scheduler and BGM hooks. They depend on Blink events that were never declared
--- (`Net.DayNight`, `Net.Event`) and on client consumers that disagree with the
--- server about their own payload shape — EventRenderer reads `data[1]` from a map
--- keyed by event id. That is a half-finished feature and reviving it is a separate
--- job from making day and night work.
+-- Its eclipse / blood-moon / storm / BGM layer was NOT revived, and has been
+-- deleted rather than left lying around: it depended on Blink events that were
+-- never declared and on client consumers that disagreed with the server about their
+-- own payload shape. Rebuilding that is a design job, not a wiring job — start from
+-- scratch rather than from those files.
 --
 -- REPLICATION is by ReplicatedStorage values and workspace attributes, not Blink,
 -- and that is the right call here rather than a shortcut: both are late-join-safe.
@@ -25,10 +24,9 @@
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local ServerScriptService = game:GetService("ServerScriptService")
 local Workspace = game:GetService("Workspace")
 
-local MoonPhase = require(ServerScriptService.services.EventManager.MoonPhase)
+local MoonPhase = require(script.Parent.MoonPhase)
 
 -- Real minutes per phase. [TUNE] — 5 and 5 is what the original cycle shipped with:
 -- long enough that night is an event, short enough to see both in one playtest.

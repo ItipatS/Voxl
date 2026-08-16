@@ -1,4 +1,5 @@
 --!strict
+-- StarterPlayerScripts/DayNight.luau  (Star place)
 -- Integrates the server's replicated clock into Lighting.ClockTime, every frame.
 --
 -- The server (systems/daynight) publishes a LINE — the hour a phase started, the

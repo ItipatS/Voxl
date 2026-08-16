@@ -185,7 +185,7 @@ character (unanchored/massless; particles OFF). `HeldTools` = own-tool `Activate
 **Next (doc 20 §5):** inventory 45-slot fixed grid + Consumable-click use; grade *border* polish.
 
 Earlier foundation (still current): `PrivateStarStore` (per-player `star_<UserId>`),
-`std/starsize`, `RegionSeed` (MemoryStore daily seed), `std/planting` (grid). Schema in doc 15.
+`std/starsize`, `std/planting` (grid). Schema in doc 15. (`RegionSeed` has since been deleted.)
 After the item UI: `WorldGen` seed param, then the fly-near ViewportFrame preview.
 
 ## Architecture (decided — doc 13)

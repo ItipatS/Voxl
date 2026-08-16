@@ -100,6 +100,7 @@ other loses the race (existing `reserve*/release*` pattern).
 | map (SortedMap) | key → value | role |
 |---|---|---|
 | `UniverseSeed` | `week:<weekNumber> → seed` (TTL ~8d) | the weekly frontier seed; atomic get-or-init via `UpdateAsync`. **Rotating it = the weekly refresh.** *(replaces the pre-pivot `RegionSeeds` daily biome seed)* |
+| `StarServers_v1` (HashMap) | `starId → reserved server access code` (TTL 1 day, refreshed while anyone is home) | **BUILT** (`systems/StarRouting`). Single-live routing: everyone entering one star meets on one server. A stale entry is harmless — an access code names a private SERVER, not a running process, so re-joining a dead one starts a fresh instance. Hub ids (`hub:<i>`) exclude the week; frontier ids (`slot:<cx>:<cy>:<cz>:<week>`) include it. |
 | `ClaimQuota` | `<userId>:<weekNumber> → count` (TTL ~8d) | enforces **2 claims/week** (base); atomic increment, checked before a plant commits. |
 | `Depletion` | `<userId>:<starId>:<dayNumber> → level` (later) | per-account daily gather record so "gathered today" follows the account, not the server (doc 12 L2). Now keyed per-star, not per-biome-region. |
 | `MarketOrders` | order-book (later, doc 05/07 FORK D) | hub-town bazaars — incl. the **star-key** real-estate market. |
@@ -149,7 +150,8 @@ Nothing here is built to the new shape yet — the as-built code still keys by U
   to `star_<coord>` records + a `player.ownedStars` index; `plant()` takes a coordinate as the id.
 - `PlanetRegistry.luau` — repoint values to `starId`; promote `ClaimedCoords` to the generator's
   skip-set (a new universe-gen module reads it).
-- `RegionSeed.luau` — retire (or repurpose into the `UniverseSeed` weekly rotator).
+- ~~`RegionSeed.luau` — retire~~ **DONE** (deleted; nothing ever required it). The
+  `UniverseSeed` weekly rotator is still to build.
 - `PlayerStore.luau` — add `ownedStars`/`homeStarId`; ensure no weight fields.
 - New: `std/universe.luau` (shared seed→star generator, mirrors `std/dust`) + a server frontier
   system + the claim/quota/reclaim service.

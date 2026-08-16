@@ -90,14 +90,13 @@ landmarks/plant rules), `starsize` (expandTier → footprint×height), `planting
 that appears in neither list does not run, and a name in a list with no file only warns.
 
 - **both** — `players`, `PlayerStore`, `crafting`
-- **Lobby** — `constellation`, `collectables`, `asteroids`, `PlayerState`, `dustfield`,
+- **Lobby** — `collectables`, `asteroids`, `PlayerState`, `dustfield`,
   `starentry`, `PrivateStarStore`, `PlantService`, `EquipService`, `devspawn`
-  (+ `lobby`, listed but with no file: it warns on every boot)
 - **Star** — `starworld`, `ChunkServer`, `BlockEditServer`, `EquipService`, `daynight`,
   `starexit`
 - **required directly, not listed** — `WorldStore` + `LockService` (by `BlockEditServer`),
-  `StarRouting` (by `starentry` and `starworld`)
-- **orphaned** — `spawn` (superseded by `starworld`), `RegionSeed` (nothing requires it)
+  `StarRouting` (by `starentry` and `starworld`), `MoonPhase` (by `daynight`),
+  `ItemBehaviors` (lazily, by `PlayerStore`), `PlanetRegistry` (by `PlantService`)
 
 **Client (`src/Client`, canonical):** wired in `main.client.luau`.
 
@@ -107,15 +106,14 @@ that appears in neither list does not run, and a name in a list with no file onl
   `AsteroidRenderer`, `SpaceProxies`, `MawWarning`, `UniverseField`, `ZoneWatcher`,
   `CreatePlanetController`, `PlantingController`
 - **Star** — `StarWorld`, `ChunkClient`, `StarFly`, `BlockEdit`, `LockController`,
-  `StarExit`, plus `ClientServices.EventHandler.DayNightRenderer` (required by path,
-  since `req()` only looks in StarterPlayerScripts)
+  `StarExit`, `DayNight`
 - **libraries** — `FlightAnims` (shared flight animation state machine), `BlockPreview`,
   `ItemDrag`, `ItemUse`
-- **graveyard** — `BlockInventory`, `Hotbar`, `InventoryRender`, `ResourceStarEntry`
 
 **Data (durable + hot):** `PlayerStore` (THE inventory — 54 unified slots holding materials, tools AND blocks; ProfileStore),
-`PrivateStarStore` (private star, ProfileStore), `RegionSeed` (MemoryStore). Schema
-in doc 15.
+`PrivateStarStore` (private star, ProfileStore), `StarRouting` (MemoryStore:
+starId -> reserved server). Schema in doc 15. (`RegionSeed` was deleted — nothing
+ever required it.)
 
 ---
 
@@ -146,28 +144,43 @@ generalizes exactly this into an item layer.
 
 ---
 
-## 5. Ported rot — dormant or dead (do NOT build on it)
+## 5. Ported rot — mostly deleted
 
-`ClientServices` is a graft from earlier RPG projects. **Nothing in the running
-require-chain reaches it.** Categories:
+`ClientServices` and `Server/services` were a graft from earlier RPG projects.
+Almost all of it has now been **deleted**, not quarantined, because a dead file that
+looks live costs every future session a read — and one of them (`ResourceStarEntry`)
+did worse than that: it stayed wired long enough to send every hub entry to the wrong
+world. Git history has all of it if anything is ever wanted back.
 
-| status | modules | verdict |
+**Deleted:** `BuildController`, `Control/InputManager`, `SoundHandler/*`,
+`EventHandler/{init,EventRenderer}`, `services/{SunAnim,Menu,PlacementService}`,
+`services/EventManager/{init,EventDefinitions,DevCommands}`, `Client/StarField`,
+`systems/{spawn,RegionSeed,constellation}`, and the whole `_graveyard`
+(`BlockInventory`, `Hotbar`, `InventoryRender`, `ResourceStarEntry`).
+
+Most of it *could not have run*: it required `ReplicatedStorage.Shared.Framework.*`,
+`ReplicatedStorage.Logger`, `StationRegistry`, `PlotExpansionService` and
+`ReplicatedStorage.net` — none of which exist in this codebase, and some of which
+belong to a different game entirely.
+
+**Salvaged rather than deleted:**
+
+| was | now | why |
 |---|---|---|
-| **DEAD → quarantined** (`src/_graveyard`) | `UI/InventoryManager`, `Control/ItemController` | broken deps (`Data.MainLocalProfile`, `Shared.Maid`, `Remotes.*` — none exist). Replaced by doc 17. |
-| **MOVED into the UI framework** | `UI/TooltipBuilder→Client/UI/Tooltip`, `UI/TierEffectManager→Effect`, `UI/TweenManager→TextFX`, `UI/UIData→UIData` | pure view helpers; consolidated under `src/Client/UI/` so ALL UI code has one home (doc 19). |
-| **DORMANT — not wired, audit before reuse** | `Control/InputManager`, `BuildController`, `SoundHandler/*`, `EventHandler/*` | ported; not required by any entry. Keep for possible salvage; treat as unknown until audited. (`UI/UI` UIManager + `UI/QuickMenu` were quarantined.) |
-| **KEEP for later** (resource-star ambiance) | `VisualEffects/*` (Weather, Shoreline, LensFlare, WindController, MeteorImpact, ScreenRain) | dormant but intentional future content; leave in place. |
-| **RETIRED → quarantined** | `Client/StarRings`, `Client/BlackHoleProxy` | superseded by `SpaceProxies` (doc 14). |
+| `services/EventManager/MoonPhase` | `systems/MoonPhase` | the 8-phase moon + texture ids were the only sound part of the events layer; `daynight` uses it |
+| `EventHandler/DayNightRenderer` | `Client/DayNight` | it is a normal client module, so it belongs where `req()` can reach it |
+| `UI/TooltipBuilder`, `TierEffectManager`, `TweenManager`, `UIData` | `Client/UI/*` | pure view helpers, consolidated so all UI has one home (doc 19) |
 
-**Server `services/`** (`SunAnim`, `Menu`, `EventManager/*`, `PlacementService`) are
-likewise **not in either `SYSTEMS` list** → dormant ported. Audit before wiring.
+**Still there on purpose:** `ClientServices/VisualEffects/*` (Weather, ocean/shore,
+StarDome, WindShake, LensFlare, MeteorImpact, ScreenRain). Unlike the rest it is
+self-contained — every require is internal — so it can actually load, and a planet
+with a day/night cycle is exactly what it was written for. Dormant, not rot.
 
-**Rule of thumb:** if it's under `ClientServices` or `Server/services` and you can't
-trace a require to it from an entry file, assume it's ported and does not run. Verify
-before reusing; prefer rebuilding to the baseline over re-animating an old graft.
+**Rule of thumb:** if you cannot trace a require to it from an entry file, it does
+not run. Prefer rebuilding to the baseline over re-animating an old graft — the
+day/night revival kept one 40-line table and rewrote everything around it.
 
 ---
-
 ## 6. Non-negotiable conventions (with teeth)
 
 1. **Server-authoritative.** Client renders a mirror; it never owns mutable state.
