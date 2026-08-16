@@ -51,6 +51,61 @@ local function setDaylight()
 end
 setDaylight()
 
+-- SKY. Both places are published from one file, so the star inherits the LOBBY's
+-- authored Sky — deep space, which is a strange thing to see from the ground.
+--
+-- Done on the SERVER, and the ordering worry that suggests doing it client-side
+-- does not apply: this runs at boot, before any client exists, and Lighting's
+-- children replicate. A joining client therefore receives the right Sky in its
+-- FIRST replication — there is no frame where the wrong one is up, and nothing to
+-- wait for. Client-side would mean every client deleting and re-adding its own,
+-- with the server unable to see which ones got it wrong; that is the reconcile
+-- problem, and this avoids having it.
+local SKY_FOR_STAR = { "Planet", "Forest" } -- tried in order
+
+local function setSky()
+	local box = ReplicatedStorage:FindFirstChild("Skybox")
+	if not box then
+		warn("[starworld] ReplicatedStorage.Skybox is missing — keeping the lobby sky")
+		return
+	end
+
+	-- Find the Sky to install before destroying anything, so a bad name leaves the
+	-- old sky up rather than leaving the star with no sky at all.
+	local found: Sky? = nil
+	local usedName = ""
+	for _, name in SKY_FOR_STAR do
+		local entry = box:FindFirstChild(name)
+		local sky = if entry and entry:IsA("Sky") then entry
+			elseif entry then entry:FindFirstChildOfClass("Sky")
+			else nil
+		if sky then
+			found, usedName = sky, name
+			break
+		end
+	end
+
+	if not found then
+		local have = {}
+		for _, child in box:GetChildren() do
+			have[#have + 1] = child.Name
+		end
+		warn(`[starworld] no star sky in ReplicatedStorage.Skybox — wanted one of `
+			.. `{table.concat(SKY_FOR_STAR, "/")}, found: {table.concat(have, ", ")}`)
+		return
+	end
+
+	for _, child in Lighting:GetChildren() do
+		if child:IsA("Sky") then
+			child:Destroy() -- the lobby's, shipped in the place file
+		end
+	end
+	local clone = found:Clone()
+	clone.Parent = Lighting
+	print(`[starworld] sky set to Skybox.{usedName}`)
+end
+setSky()
+
 -- WATER. The mesher no longer builds water out of transparent parts; it writes the
 -- water cells into Terrain, which is one render object for the whole world and
 -- brings swimming, buoyancy and underwater fog with it. What it does NOT bring is

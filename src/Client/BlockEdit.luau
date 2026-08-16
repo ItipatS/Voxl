@@ -12,7 +12,9 @@ local Workspace = game:GetService("Workspace")
 
 local blink = require(ReplicatedStorage.std.ClientNet)
 local WorldGen = require(ReplicatedStorage.Misc.WorldGen)
-local Hotbar = require(script.Parent:WaitForChild("Hotbar"))
+local itemdb = require(ReplicatedStorage.std.itemdb)
+local ItemMirror = require(script.Parent:WaitForChild("ItemMirror"))
+local ItemHotbar = require(script.Parent:WaitForChild("ItemHotbar"))
 
 local BLOCK_SIZE = WorldGen.BLOCK_SIZE
 local BLOCK = WorldGen.BLOCK
@@ -78,12 +80,23 @@ local function breakBlock()
     blink.EditBlock.Fire({ wx = bx, y = by, wz = bz, block = BLOCK.Air })
 end
 
+-- What the hotbar is holding, as a block id — nil if the held slot is empty or
+-- holds something that is not a block (a pickaxe, a material). There is no separate
+-- block palette any more: the hotbar holds real items, and only the ones with a
+-- `placesBlock` can go back into the world.
+local function heldBlock(): number?
+    local entry = ItemMirror.getSlot(ItemHotbar.heldSlot())
+    return if entry then itemdb.blockOf(entry.key) else nil
+end
+
 local function placeBlock()
+    local block = heldBlock()
+    if not block then return end
     local hit = aim()
     if not hit then return end
     local outside = hit.Position + hit.Normal * (BLOCK_SIZE * 0.5)
     local bx, by, bz = cellOf(outside)
-    blink.EditBlock.Fire({ wx = bx, y = by, wz = bz, block = Hotbar.getSelectedBlock() })
+    blink.EditBlock.Fire({ wx = bx, y = by, wz = bz, block = block })
 end
 
 RunService.RenderStepped:Connect(updateMarker)
@@ -95,7 +108,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
     elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
         placeBlock()
     end
-    -- Block selection (number keys / slot clicks) is owned by Hotbar.
+    -- Slot selection (number keys / clicks / scroll) is owned by ItemHotbar.
 end)
 
 return {}

@@ -56,7 +56,12 @@ blink.EditBlock.On(function(player: Player, edit)
         if current == BLOCK.Air then
             return -- nothing to break
         end
-        PlayerStore.add(player, current, 1)
+        -- Slots are finite, which the old unbounded blockId->count map never had to
+        -- reckon with: a full inventory must REFUSE the break, not mine the block
+        -- into nothing. The block stays in the world until there's room for it.
+        if PlayerStore.add(player, current, 1) > 0 then
+            return
+        end
     else
         if current ~= BLOCK.Air then
             return -- cell already occupied

@@ -10,6 +10,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterGui = game:GetService("StarterGui")
 
 local itemdb = require(ReplicatedStorage.std.itemdb)
+local BlockPreview = require(script.Parent:WaitForChild("BlockPreview"))
 local ItemMirror = require(script.Parent.ItemMirror)
 local ItemDrag = require(script.Parent.ItemDrag)
 local UI = require(script.Parent.UI)
@@ -144,8 +145,14 @@ local function fill(slot: ImageButton, entry)
 	if not def then
 		return
 	end
-	-- visual: 3D model > icon > debug
-	if def.model and vp and renderModel(vp, def.model) then
+	-- visual: block cube > 3D model > icon > debug
+	if def.placesBlock and vp then
+		-- A block draws itself. ~190 blocks would otherwise need ~190 hand-made
+		-- sprites, and the cube is always right because it IS the block.
+		BlockPreview.build(vp, def.placesBlock)
+		vp.Visible = true
+		if icon then icon.Visible = false end
+	elseif def.model and vp and renderModel(vp, def.model) then
 		vp.Visible = true
 		if icon then icon.Visible = false end
 	else

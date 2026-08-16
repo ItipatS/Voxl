@@ -1,10 +1,16 @@
 -- ServerScriptService/systems/PlayerStore.luau
 --!strict
 
--- Per-player block inventory (block id -> count), persisted with ProfileStore.
--- Mining a block adds one; placing consumes one. Synced to the owner on join and
--- after every change so the hotbar/inventory show live counts. Required directly
--- by BlockEditServer (a service, not a scheduler system).
+-- THE inventory: one 54-slot array per player, persisted with ProfileStore, holding
+-- everything they carry — materials, tools, and blocks alike. Mining a block adds
+-- one; placing consumes one. Synced to the owner on join and after every change.
+-- Required directly by BlockEditServer (a service, not a scheduler system).
+--
+-- Blocks used to be a SECOND inventory living beside this one: `Data.blocks`, a
+-- blockId -> count map with no slots and no stack caps, its own sync event, and its
+-- own client UI — so the star place and the lobby disagreed about what a player was
+-- carrying. Blocks are now ordinary items keyed `block_<id>` (itemdb), which is
+-- what doc 20 called for. onAdded drains any old map into slots once.
 
 local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
@@ -106,23 +112,9 @@ local function place(slots, key: string, n: number): number
     return n
 end
 
--- Block inventory push (unchanged channel).
-local function syncTo(player: Player)
-    local profile = profiles[player]
-    if not profile then
-        return
-    end
-    local list = {}
-    for block, count in profile.Data.blocks do
-        if count > 0 then
-            list[#list + 1] = { block = block, count = count }
-        end
-    end
-    blink.InventorySync.Fire(player, list)
-end
-
 -- Item inventory + weight push (occupied slots only; client fills the rest empty).
--- Weight includes block weight, so it's also called after block changes.
+-- This is now the ONLY inventory channel: blocks are items, so the separate
+-- InventorySync push (and the client-side BlockInventory that consumed it) is gone.
 local function syncItems(player: Player)
     local profile = profiles[player]
     if not profile then
@@ -141,10 +133,9 @@ local function syncItems(player: Player)
             end
         end
     end
+    -- Blocks are items now, so their weight is already in itemWeight above; the
+    -- profile's legacy `blocks` map is drained to empty on load.
     local weight = itemWeight
-    for block, count in profile.Data.blocks do
-        weight += itemdb.blockWeight(block) * count
-    end
     blink.ItemSync.Fire(player, {
         weight = math.floor(weight + 0.5),
         capacity = itemdb.capacity(profile.Data),
@@ -166,9 +157,38 @@ local function onAdded(player: Player)
         profile:EndSession()
         return
     end
+    -- MIGRATION: blocks used to be their own map on the profile. Drain whatever a
+    -- returning player still has in it into real slots and empty it, once. Losing
+    -- someone's mined blocks to a refactor is not acceptable, and the profile keeps
+    -- the (now always empty) field so an old server build could still read it.
+    local legacy = profile.Data.blocks
+    if legacy and next(legacy) ~= nil then
+        local moved, lost = 0, 0
+        for block, n in legacy do
+            if n > 0 then
+                local key = itemdb.forBlock(block)
+                local left = if key then place(profile.Data.slots, key.key, n) else n
+                moved += n - left
+                lost += left
+            end
+        end
+        table.clear(legacy)
+        if lost > 0 then
+            -- 54 slots cannot always hold an unbounded map. Say so rather than
+            -- silently eating it.
+            warn(`[PlayerStore] {player.Name}: migrated {moved} blocks into slots, `
+                .. `{lost} did not fit and were dropped`)
+        else
+            print(`[PlayerStore] {player.Name}: migrated {moved} blocks into slots`)
+        end
+    end
+
     if not profile.Data.granted then
         for block, n in STARTER do
-            profile.Data.blocks[block] = (profile.Data.blocks[block] or 0) + n
+            local def = itemdb.forBlock(block)
+            if def then
+                place(profile.Data.slots, def.key, n)
+            end
         end
         profile.Data.granted = true
     end
@@ -189,7 +209,6 @@ local function onAdded(player: Player)
         end
     end
     profiles[player] = profile
-    syncTo(player)
     syncItems(player)
 end
 
@@ -204,31 +223,52 @@ for _, player in Players:GetPlayers() do
     task.spawn(onAdded, player)
 end
 
--- Add mined blocks.
-function PlayerStore.add(player: Player, block: number, n: number)
+-- ---- Blocks, stored as items ------------------------------------------------
+-- Blocks used to live in their own `Data.blocks` map: blockId -> count, unbounded,
+-- no slots, no stacks, and a separate sync channel and a separate client UI. They
+-- are now ordinary items in the same 54 slots as everything else, keyed
+-- `block_<id>` (itemdb). This is what makes ONE inventory possible across both
+-- places — see the migration in onAdded for what happens to old profiles.
+
+local function blockKey(block: number): string?
+    local def = itemdb.forBlock(block)
+    return if def then def.key else nil
+end
+
+-- Add mined blocks. Returns how many did NOT fit, so the caller can refuse the
+-- break rather than deleting the block: slots are finite, which the old unbounded
+-- map never had to think about.
+function PlayerStore.add(player: Player, block: number, n: number): number
     local profile = profiles[player]
-    if not profile then
-        return
+    local key = blockKey(block)
+    if not profile or not key then
+        return n
     end
-    profile.Data.blocks[block] = (profile.Data.blocks[block] or 0) + n
-    syncTo(player)
-    syncItems(player) -- blocks carry weight; refresh the bar
+    local left = place(profile.Data.slots, key, n)
+    syncItems(player)
+    return left
 end
 
 -- Consume for placing; returns false (and changes nothing) if the player lacks it.
 function PlayerStore.consume(player: Player, block: number, n: number): boolean
     local profile = profiles[player]
-    if not profile then
+    local key = blockKey(block)
+    if not profile or not key or countKey(profile.Data.slots, key) < n then
         return false
     end
-    local have = profile.Data.blocks[block] or 0
-    if have < n then
-        return false
-    end
-    profile.Data.blocks[block] = have - n
-    syncTo(player)
+    removeKey(profile.Data.slots, key, n)
     syncItems(player)
     return true
+end
+
+-- How many of a block the player is carrying (across all slots).
+function PlayerStore.blockCount(player: Player, block: number): number
+    local profile = profiles[player]
+    local key = blockKey(block)
+    if not profile or not key then
+        return 0
+    end
+    return countKey(profile.Data.slots, key)
 end
 
 -- ---- Items (slot-based) -----------------------------------------------------

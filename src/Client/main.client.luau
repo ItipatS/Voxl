@@ -35,10 +35,15 @@ if placemode.Mode == "ResourceStar" then
 	req("StarFly") -- F to fly: the only practical way to survey an 896-block map
 	req("Prompts") -- styled ProximityPrompt UI (expressive-prompts) for world interactions
 	req("UI") -- the UI framework (Controller/Sound/Tween/Notifier + registry bootstrap) — doc 19
-	req("BlockInventory")
-	req("Hotbar")
+	-- ONE inventory, the same one the lobby uses. The star place used to run its own
+	-- (BlockInventory/Hotbar/InventoryRender over a hardcoded 7-block palette), which
+	-- is why your inventory looked different depending on which place you were in.
+	-- Blocks are items now (itemdb `block_<id>`), so these modules cover them too.
+	req("ItemMirror") -- item inventory + weight mirror (doc 17)
+	req("ItemInventory") -- the 45-slot grid + weight bar
+	req("ItemHotbar") -- slots 1-9; also selects the block BlockEdit places
+	req("HeldTools") -- held-tool activation → behavior + particle distance-LOD (doc 20)
 	req("BlockEdit")
-	req("InventoryRender") -- block inventory (blocks fill ItemSlots here; item grid is Lobby-only for now)
 	req("LockController")
 else
 	-- LOBBY (The Cluster) — zero-g jet flight, stars, black hole, collectables.

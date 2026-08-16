@@ -21,7 +21,10 @@ export type Mode = "Lobby" | "ResourceStar"
 --   * model — name of a `ReplicatedStorage.Models` child, rendered in the slot's
 --             ViewportFrame. For voxel-style items that read better in 3D (a tree,
 --             a tool). Auto-framed — no per-item camera config needed.
-export type Kind = "Tool" | "Consumable" | "Material"
+-- Block is the fourth kind (doc 20 named unifying blocks into the slot model as an
+-- open task). It behaves like a Material in the grid — inert, stackable — but it is
+-- the only kind that can go back INTO the world, via `placesBlock`.
+export type Kind = "Tool" | "Consumable" | "Material" | "Block"
 
 -- Rarity ladder (extensible). Drives UI colour/effect/border via UIData.Grade — this is
 -- SEPARATE from `tier` (numeric item level / progression). e.g. a tier-2 mythical item.
@@ -40,6 +43,10 @@ export type ItemDef = {
 	model: string?, -- ReplicatedStorage.Models child name → 3D viewport icon (voxel items)
 	usableIn: { [string]: boolean }?, -- placemodes the behavior may run in (nil = not directly usable)
 	behavior: string?, -- key into the server ItemBehaviors registry (nil = inert material)
+	-- The block id this item places when used against the world (kind == "Block").
+	-- This is the bridge that did not exist: before it, the star place kept its own
+	-- blockId -> count inventory because nothing could turn a block into an item.
+	placesBlock: number?,
 	desc: { string }, -- tooltip lines
 }
 
@@ -168,6 +175,58 @@ local BLOCK_WEIGHT: { [number]: number } = {
 
 function M.blockWeight(block: number): number
 	return BLOCK_WEIGHT[block] or BLOCK_WEIGHT_DEFAULT
+end
+
+-- ---- BLOCKS AS ITEMS --------------------------------------------------------
+-- Every block is a carriable item, generated from the block registry.
+--
+-- The star place used to keep a SECOND inventory: a flat blockId -> count map with
+-- no slots, no stack caps, and a hotbar hardcoded to seven of the ~190 blocks. It
+-- existed because the item layer had no idea what a block was — there was no
+-- blockId <-> item mapping anywhere in the codebase, so the two could never meet.
+-- This is that mapping.
+--
+-- Ids are 10000 + block id, clear of the 3000-range recipe placeholders, and block
+-- ids are append-only (Blocks.luau) so they are stable forever. The KEY is
+-- `block_<id>` for the same reason: a block's display name can be reworded, its id
+-- cannot, and the key is what ends up written into player profiles.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Blocks = require(ReplicatedStorage.Misc.Blocks)
+
+local BLOCK_ITEM_BASE = 10000
+local blockToItem: { [number]: ItemDef } = {}
+
+for blockId, d in Blocks.defs do
+	if blockId > 0 then
+		local def: ItemDef = {
+			id = BLOCK_ITEM_BASE + blockId,
+			key = `block_{blockId}`,
+			name = d.name,
+			kind = "Block",
+			tier = 1,
+			grade = "common",
+			weight = M.blockWeight(blockId),
+			stack = 99,
+			placesBlock = blockId,
+			-- No icon and no model on purpose: the item UI renders a Block by
+			-- drawing the actual cube (BlockPreview), which is both free and
+			-- always correct, rather than needing ~190 hand-made sprites.
+			desc = { d.name },
+		}
+		addGen(def)
+		blockToItem[blockId] = def
+	end
+end
+
+-- blockId -> its item def, and back. The two accessors every caller needs to move
+-- between the world and the inventory.
+function M.forBlock(block: number): ItemDef?
+	return blockToItem[block]
+end
+
+function M.blockOf(key: string): number?
+	local d = byKey[key]
+	return if d then d.placesBlock else nil
 end
 
 function M.itemWeight(key: string): number

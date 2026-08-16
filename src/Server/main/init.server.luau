@@ -25,7 +25,9 @@ local LOBBY_SYSTEMS = { "lobby", "constellation", "collectables", "asteroids", "
 -- STAR place (= ResourceStar PlaceId): the voxel gathering world for ONE star. `starworld`
 -- configures the bounded world from TeleportData + positions spawn + loads characters (so it
 -- replaces the old boot-time `spawn` system).
-local RESOURCE_SYSTEMS = { "starworld", "ChunkServer", "players", "BlockEditServer", "PlayerStore", "crafting" }
+-- EquipService is here as well as in the Lobby now: the star place runs the same
+-- item hotbar, so it fires EquipItem, and without this nothing would answer it.
+local RESOURCE_SYSTEMS = { "starworld", "ChunkServer", "players", "BlockEditServer", "PlayerStore", "crafting", "EquipService" }
 
 local SYSTEMS = if placemode.Mode == "ResourceStar" then RESOURCE_SYSTEMS else LOBBY_SYSTEMS
 

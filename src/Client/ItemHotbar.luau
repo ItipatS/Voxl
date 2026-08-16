@@ -12,6 +12,7 @@ local TweenService = game:GetService("TweenService")
 
 local blink = require(ReplicatedStorage.std.ClientNet)
 local itemdb = require(ReplicatedStorage.std.itemdb)
+local BlockPreview = require(script.Parent:WaitForChild("BlockPreview"))
 local ItemMirror = require(script.Parent.ItemMirror)
 local ItemDrag = require(script.Parent.ItemDrag)
 local UI = require(script.Parent.UI)
@@ -119,7 +120,13 @@ local function fill(i: number)
 		return
 	end
 	if vp then
-		vp.Visible = if def.model and renderModel(vp, def.model) then true else false
+		-- Blocks draw themselves as a cube; everything else uses its 3D model.
+		if def.placesBlock then
+			BlockPreview.build(vp, def.placesBlock)
+			vp.Visible = true
+		else
+			vp.Visible = if def.model and renderModel(vp, def.model) then true else false
+		end
 	end
 	if q then
 		q.Text = if def.stack > 1 and entry.count > 1 then `x{entry.count}` else ""
@@ -140,7 +147,12 @@ end
 local lastEquip = -1
 local function equipHeld()
 	local entry = ItemMirror.getSlot(held)
-	local id = if entry then (itemdb.byKey(entry.key) :: any).id else 0
+	local def = if entry then itemdb.byKey(entry.key) else nil
+	-- Only Tools are HELD. A block or a material in hand means "nothing in hand" as
+	-- far as the character is concerned — and it has to be sent as 0 rather than
+	-- skipped, or selecting a block would leave the last pickaxe still in your fist
+	-- (the server ignores a non-Tool id, so nothing would ever put it away).
+	local id = if def and def.kind == "Tool" then def.id else 0
 	if id ~= lastEquip then
 		lastEquip = id
 		blink.EquipItem.Fire(id)
@@ -302,4 +314,11 @@ ItemMirror.onChanged(render)
 ItemDrag.onChanged(render)
 render()
 
-return {}
+return {
+	-- Which hotbar slot is in hand. BlockEdit reads this to know what to place:
+	-- the hotbar is the single selector now, for tools, materials and blocks alike,
+	-- instead of the star place running a second one over a hardcoded palette.
+	heldSlot = function(): number
+		return held
+	end,
+}
