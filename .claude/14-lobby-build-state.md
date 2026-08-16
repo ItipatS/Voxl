@@ -73,14 +73,13 @@ Landing on a procedural star now generates its **real rolled biome mix**, and th
 - **The 25-biome ladder is authored (doc 21).** `WorldGen` now has the full **family × tier grid** (`LADDER[type][tier]→biomeId`): 9 rungs reuse the legacy climate defs, **16 new biomes** added (calm T1s Meadow/Rockland/Dunes/Frostfield/Marsh; wild T4s Ancient Grove/Peaks/Mesa/Glacier/Mire; surreal T5s Wildwood/Monoliths/Glass Sea/Aurora Shelf/Spore Hollow — plus Badlands/Fen). Each has real `BiomeDef` gen params (flatness/hilliness/ridged/treeDensity/palette) using the existing block set.
 - **Placement = discovery.** `pickStarBiome` sorts the palette low→high tier and blends region noise with an **inward radial bias**: common low-tier rungs cover the rim/most area, the rare high-tier rung surfaces as the island's **central heart** (doc 21 "T5 = a single special locus, often central"). You cross ordinary terrain and *discover* the payoff biome at the core.
 - **Robust spawn.** `starworld.positionSpawn` no longer needs an authored SpawnLocation — it **creates a functional spawn anchor** if none exists, and `findSpawnColumn` scans centre + two rings and drops the player on the **lowest solid column** (safe/flat ground, off the tall exotic core, which then reads as a landmark to walk toward). Never spawns into the void.
-- **NEXT here:** node meshes (retire voxel trees; the trees are still oak everywhere), biome-appropriate tree species, T5 set-pieces (floating land / glow), hover overlay.
 
 ## ✅ Checkpoint — BOUNDED-STAR GEN + ENTRY + CRAFTING FOUNDATION
 The worlds become enterable + craftable; design canon for biomes/crafting written.
 - **Bounded-star worldgen** (`src/Misc/WorldGen.luau` gains star mode): `applyStar/applyStarByTypes` = per-star seed + radial **island disc** (slopes into void beyond the rim) + **restricted rolled biome palette** (region field, lower tiers more area); legacy infinite continent still the fallback. `std/starconfig` publishes `{seed,radius,types}` via ReplicatedStorage attrs; server `systems/starworld` + client `Client/StarWorld` both `applyStarByTypes(get())` so terrain matches; spawn lands on the island centre; `CharacterAutoLoads` off until configured. TEST star for Studio/direct joins.
 - **Real star entry**: `UniverseField` planets have an expressive **Enter** ProximityPrompt (`Style=Custom`) → Blink `EnterStar(slot)` → lobby `systems/starentry` recomputes the star (must exist this week) + checks proximity → `TeleportAsync(RESOURCE_PLACE_ID, {seed,radius,types})`. **Two places: Lobby + Star (= ResourceStar PlaceId), one live server per starId (MemoryStore routing later).**
 - **Biome canon (doc 21)**: 25 biomes = 5 families (Flora/Stone/Sand/Frost/Bog) × 5-tier ladders; tier = terrain wildness × node richness × rarity; nodes = **meshes** (`Assets.Resources`), 3/biome, T1-varied → T2+-iconic, tiny hover overlay. Still coarse in code (`WorldGen.TYPE_BIOME` maps type→one biome, tier ignored).
-- **Crafting canon (doc 22) + foundation BUILT**: three surfaces (3×3 pattern **table** / time **stations** furnace-sawmill-crusher-… / **factory** automates a pattern). **Two axes: TIER (unified material per tier) vs AESTHETIC (cosmetic stain-styling OFF the tier tree).** `std/materials` (75 raws + refined + stains), `std/recipes` (station chains generated per tier + table core + doc-11 tier-upgrade rule + `byId`/`inputsOf`). `itemdb` **generates** all craftables as placeholder-icon items (mats 1000+ / tools 2000+ / product placeholders 3000+). Server `systems/crafting` (both places): `Craft(recipeId)` → validate/consume/grant (MVP instant). `PlayerStore` `[TEST]`-grants mats. **NEXT: crafting UI + tree browser, station/time+factory gating, mesh-node placement (retire voxel trees).**
+- **Crafting canon (doc 22) + foundation BUILT**: three surfaces (3×3 pattern **table** / time **stations** furnace-sawmill-crusher-… / **factory** automates a pattern). **Two axes: TIER (unified material per tier) vs AESTHETIC (cosmetic stain-styling OFF the tier tree).** `std/materials` (75 raws + refined + stains), `std/recipes` (station chains generated per tier + table core + doc-11 tier-upgrade rule + `byId`/`inputsOf`). `itemdb` **generates** all craftables as placeholder-icon items (mats 1000+ / tools 2000+ / product placeholders 3000+). Server `systems/crafting` (both places): `Craft(recipeId)` → validate/consume/grant (MVP instant). `PlayerStore` `[TEST]`-grants mats.
 - **User tuning (uncommitted this session):** boost back to **deplete-lock** (full refill after 0) + SFX tail-gate; proxy depths split (**stars far 18000, black hole close ~100/baseScale 50** — its particles cull at distance); `MawWarning` = ForceField `SpecialMesh` sphere that **fades in near the void**; hit/collect SFX at `SoundService` (miss sound = `Mice`); added `RbxCharacterSounds.client`.
 
 ## ✅ Checkpoint — PROCEDURAL UNIVERSE + FEEL POLISH
@@ -127,7 +126,6 @@ Item system + UI framework are built (docs 17/19/20). Highlights & recent fixes:
 - **`tier` (numeric item level) vs `grade` (rarity common→mythical)** are separate. Grade visuals in one table `UIData.Grade` (+ effect flags colorLoop/gradient/glow; border tiles via `UIData.Border` index). **All UI text = `UIData.Font` Silkscreen** (UIRegistry stamps it).
 - **Custom camera** (`CameraController`, **both places**): over-shoulder shiftlock, scroll→hotbar, Alt+scroll→zoom, Alt/UI→free cursor, **T = first/third person**. Roblox backpack CoreGui disabled.
 - **Server cold-start FIXED (was 30s):** `lobby.luau` blocked on `WaitForChild("ForestStar",30)` (star is in Assets now, not Workspace) — removed. `players.playersRemoved` jecs error fixed. `start()` logs per-module boot timing. Collectables use spatial buckets (scales to 10k+ stars).
-- **NEXT:** make Forest resource star real (biome+seed in ResourceStar, `ResourceStarEntry`→TeleportService); replicated render of planted stars + fly-near ViewportFrame preview; mobile flight thumbstick; FX presets (doc 20 §9).
 
 
 **Active workstream: engine baseline + item layer.** Re-evaluated the codebase and wrote
@@ -182,54 +180,64 @@ grade tint) → Blink `EquipItem` → server `EquipService` spawns a **replicate
 character (unanchored/massless; particles OFF). `HeldTools` = own-tool `Activated` → item behavior
 (seed → planting) + **particle distance-LOD** (near = full FX, far = model only). Inventory-click is
 **Consumable-only** now (tools used via hotbar). Debounce added to sound/toasts/panel-toggle.
-**Next (doc 20 §5):** inventory 45-slot fixed grid + Consumable-click use; grade *border* polish.
 
 Earlier foundation (still current): `PrivateStarStore` (per-player `star_<UserId>`),
 `std/starsize`, `std/planting` (grid). Schema in doc 15. (`RegionSeed` has since been deleted.)
 After the item UI: `WorldGen` seed param, then the fly-near ViewportFrame preview.
 
-## Architecture (decided — doc 13)
-- **One codebase, two published places.** `std/placemode.luau` resolves `Mode` from `game.PlaceId` (`LOBBY_PLACE_ID` / `RESOURCE_PLACE_ID`, now filled) with a `STUDIO_OVERRIDE` for testing.
-- **Lobby place** = The Cluster (zero-g flight, stars, black hole, collectables; private planets live here later, co-resident, loaded from DataStore).
-- **ResourceStar place** = the voxel gathering "wild" — ONE place, biome chosen via `TeleportData.biome` + a fixed regional seed. NOT one place per biome.
-- `main.client` + `init.server` branch on `placemode.Mode`.
+## Architecture
 
-## Lobby — client (`src/Client/`)
-- **FlightController** — zero-g jet flight (WASD + Space/LCtrl), rig faces travel (R6/R15 anim sets), **random cluster spawn** (annulus, facing out), movement frozen while a modal UI is up. Speed ×`FlightBoost.mult()`. **Black-hole event horizon**: inside `BLACKHOLE.radius` you can't escape → dragged to `coreRadius` → consumed → respawn.
-- **FlightBoost** — Hold LeftShift boost (stamina + deplete-lock, feet/camera particles, pitch-rising SFX). Feet plume is `LockedToPart` so it doesn't chase the camera. See top checkpoint.
-- **CameraController** — scriptable over-shoulder shiftlock (scroll→hotbar, Alt+scroll→zoom, Alt/UI→free cursor).
-- **Prompts** — `ExpressivePrompts.Init()` + style config; any `ProximityPromptStyle.Custom` renders the styled billboard (star catch uses it).
-- **SpaceProxies** — parallax proxies for all landmarks (black hole + 5 resource stars), cloned from `ReplicatedStorage.Assets[template]`, kept close + scaled to fake distance, **spins ring `Union`s** in-frame. Driven by `constellation.LANDMARKS`. *Replaces the retired `BlackHoleProxy` + `StarRings` — delete those two files.* ⚠️ **Runs at `BindToRenderStep(RenderPriority.Camera+1)`, NOT `RenderStepped:Connect`** — a proxy is rendered close to the camera so its position is hyper-sensitive to the camera; it MUST update after `CameraController` (which binds at `RenderPriority.Camera`) or it reads a stale camera and shakes at high speed. Keep this ordering.
-- **StarField** — client-only dust (camera-wrapped toroidal field, random firefly colors, wobble). Spread wide (`FIELD_RADIUS 1800`) so near dust parallaxes slowly = travel doesn't read too fast.
-- **StarRenderer** — renders the STREAMED collectable stars (Blink `StarStream`/`StarUnload`), interpolates, dims by distance, catch prompt → `StarCatch`, `StarCaught` → burst + sound.
-- **ResourceStarEntry** — proximity countdown HUD ("Entering The <Biome>… 3") → `TeleportService:TeleportAsync(RESOURCE_PLACE_ID, {plr}, {TeleportData={biome}})` (guarded pcall). Deliberately approach-based, not click-to-teleport.
-- **Music** — shuffled BGM from `SoundService.Musics` (**both places**).
+**The module-by-module map lives in `.claude/16-engine-baseline.md` and is kept
+accurate there.** This section used to repeat it and drifted: it described entry via
+`TeleportData.biome`, `StarField`, `ResourceStarEntry` and a `constellation` server
+system, none of which exist. Only what is specific to the lobby is kept here.
 
-## Lobby — server (`src/Server/systems/`)
-- **collectables** — STREAMED collectable star field: stars are DATA (no Instances), simulated + streamed only near players in Blink batches, catch validated server-side → `leaderstats.Stars`. Tunables: `STAR_COUNT`/`FIELD_RADIUS`/`STREAM_RADIUS` (visible ≈ COUNT·(STREAM/FIELD)³).
-- **constellation** — invisible warp anchors at resource-star positions (future server-authoritative warp validation).
-- **lobby** — `Workspace.Gravity = 0` + `FallenPartsDestroyHeight = -1000000` (drop the −500 kill-plane so low flight doesn't insta-kill). No more `WaitForChild` blocking boot.
+- **One codebase, two published places.** `std/placemode.luau` resolves `Mode` from
+  `game.PlaceId`, with a `STUDIO_OVERRIDE` for testing. ⚠️ That override means
+  **Studio never exercises the teleport path** — a broken hand-off is invisible there.
+- **Lobby place** = The Cluster (zero-g flight, hub-towns, black hole, collectables).
+- **Star place** = one bounded voxel world per star, configured from TeleportData
+  (`starSeed`/`starRadius`/`starBiomes`/`starMap`) and pinned to one reserved server
+  per star by `StarRouting`.
 
-## Config: `src/std/constellation.luau`
-`CENTER` (0,500,0), **`RING_RADIUS=30000`** (one knob → the 5-point `RESOURCE_STARS` ring, with `Y_JITTER`), `NO_PLANT_RADIUS` 6000, `WARP_RADIUS` 2200, `BLACKHOLE {radius=12000, pull=600, coreRadius=700}`, `LANDMARKS` (derived from `HUBS`; per-landmark proxy `template`/`pos`/`baseScale`/`proxyDist`; BlackHole `baseScale=50`, `proxyDist=100`), `canPlantAt()`. Sibling radii that must track it: `planting.ZONE_RADIUS=24000`, `collectables.FIELD_RADIUS=22000`.
+### Lobby gotchas worth keeping
 
-## Studio scene / assets (in the lobby place)
-- Landmark **models must be templates in `ReplicatedStorage.Assets`** named to match `LANDMARKS`: `BlackHole`, `ForestStar`, `DesertStar`, `MountainStar`, `HillStar`, `SwampStar`. SpaceProxies clones them; a missing one skips (warn). **Move them out of Workspace** or you double-render.
-- `Assets.Star` (collectable template), `Assets.crown`. `SoundService.Musics` + `SoundService.SFX` (Star Catch/Flee, Magic).
-- Persistent landmark models need `ModelStreamingMode = Persistent` (spawn is ~5000 from center or they stream out).
+- **`SpaceProxies` must run at `BindToRenderStep(RenderPriority.Camera + 1)`**, never
+  `RenderStepped:Connect`. A proxy is rendered close to the camera, so its position is
+  hyper-sensitive to it and MUST update after `CameraController` (which binds at
+  `RenderPriority.Camera`) or it reads a stale camera and shakes at high speed.
+- **Landmark models are templates in `ReplicatedStorage.Assets`**, named to match
+  `LANDMARKS[].template`: `BlackHole`, `ForestStar`, `DesertStar`, `MountainStar`,
+  `HillStar`, `SwampStar`. (Those are ART names; the five hubs they render are
+  Aldermoor / Dunhollow / Cragfell / Greenbarrow / Mirefen.) A missing one warns and
+  skips. **Keep them out of Workspace** or you double-render.
+- Persistent landmark models need `ModelStreamingMode = Persistent` — spawn is ~5000
+  studs from centre and they otherwise stream out.
+- `Assets.Star` (collectable template), `Assets.Planet` (frontier stars),
+  `Assets.Items.*` (held tools), `SoundService.Musics` + `SoundService.SFX`.
 
+### Config: `src/std/constellation.luau`
+
+`CENTER` (0,500,0), **`RING_RADIUS = 30000`** (one knob → the 5-point hub ring, with
+`Y_JITTER`), `NO_PLANT_RADIUS` 6000, `WARP_RADIUS` 2200,
+`BLACKHOLE {radius=12000, pull=600, coreRadius=700}`, `VOID_RADIUS`, `HUB_DEFS` →
+`M.HUBS` (name/pos/template/biomes/`map`) → `M.LANDMARKS` (derived, so the proxy list
+cannot drift out of step), `canPlantAt()`. Sibling radii that must track it:
+`planting.ZONE_RADIUS = 24000`, `collectables.FIELD_RADIUS = 22000`.
+
+**All five hubs carry `map = "FantasyMedieval"`** — one imported town, shared. Terrain
+cannot tell you which hub you are in; only `starName` and the seed (1001-1005) do.
 ## ⚠️ Must-dos / gotchas
 - **Blink is regenerated.** `ServerNet`/`ClientNet` are current. The item channel is `ItemSync` carrying `ItemInv{weight,capacity,slots:SlotEntry[]}` plus `MoveItem`/`UseSlot`/`EquipItem`; `ItemStack`/`UseItem`/`DropItem` were never built and `InventorySync`/`BlockCount` have been deleted (blocks ride in `ItemSync`). After any future `Net.blink` edit, run `blink Net.blink` (the CLI works directly in Bash — don't ask the user to do it).
 - **Never playtest via MCP** — inspect only ([[no-playtest-inspect-instead]]).
 
 ## NEXT
 
-The old "make Forest real" plan that sat here is DONE and superseded — there is no
-`biome` field any more (`starconfig` carries `{seed, radius, biomes, map}`), entry is
-`EnterHub`/`EnterStar` → `starentry` → `StarRouting`, and `starworld` creates its own
-spawn anchor. Weight is gone per `DESIGN.md`.
+**This is the only NEXT in the file.** The per-checkpoint ones were stale directives
+buried in history and have been deleted — a checkpoint records what happened, not what
+to do.
 
-What is actually next, in rough order:
+In rough order:
 
 1. **Node meshes** — retire voxel trees; the imported map and every procedural star
    still grow oak everywhere. Biome-appropriate species, then T5 set-pieces. (doc 21)
