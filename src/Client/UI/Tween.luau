@@ -74,6 +74,24 @@ local function hoverScale(gui: GuiObject): UIScale
 	return s :: UIScale
 end
 
+-- The scale an element settles at when nothing is happening to it. Normally 1 —
+-- but an element can hold a persistent state (the HELD hotbar slot sits a little
+-- larger), and hover/press have to build on THAT rather than snapping it back to 1
+-- the first time the mouse crosses it. Stored on the instance so buttonFX, which
+-- was wired long before the caller, can read it without being told.
+--
+-- One UIScale per element, deliberately: Roblox applies only ONE UIScale to a
+-- GuiObject, so a second one for "held" would silently fight the hover one instead
+-- of multiplying with it.
+function UITween.rest(gui: GuiObject, scale: number, dur: number?)
+	gui:SetAttribute("UIRestScale", scale)
+	TweenService:Create(
+		hoverScale(gui),
+		TweenInfo.new(dur or 0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Scale = scale }
+	):Play()
+end
+
 -- Hover juice: subtle scale up on enter, back on leave. Idempotent, its own UIScale
 -- ("UIHover") so it never fights popIn's "UIPop". Works on any GuiObject.
 function UITween.hover(gui: GuiObject, to: number?)
@@ -102,6 +120,10 @@ function UITween.buttonFX(btn: GuiButton)
 	local hoverC = base:Lerp(Color3.new(1, 1, 1), 0.18) -- brighter
 	local pressC = Color3.new(base.R * 0.78, base.G * 0.78, base.B * 0.78) -- dimmer
 	local scale = hoverScale(btn)
+	local function rest(): number
+		local r = btn:GetAttribute("UIRestScale")
+		return if type(r) == "number" then r else 1
+	end
 
 	local hovering = false
 	local function set(sc: number, col: Color3)
@@ -114,17 +136,17 @@ function UITween.buttonFX(btn: GuiButton)
 	end
 	btn.MouseEnter:Connect(function()
 		hovering = true
-		set(1.06, hoverC)
+		set(rest() * 1.06, hoverC)
 	end)
 	btn.MouseLeave:Connect(function()
 		hovering = false
-		set(1, base)
+		set(rest(), base)
 	end)
 	btn.MouseButton1Down:Connect(function()
-		set(0.95, pressC)
+		set(rest() * 0.95, pressC)
 	end)
 	btn.MouseButton1Up:Connect(function()
-		set(if hovering then 1.06 else 1, if hovering then hoverC else base)
+		set(if hovering then rest() * 1.06 else rest(), if hovering then hoverC else base)
 	end)
 end
 

@@ -46,7 +46,10 @@ if placemode.Mode == "ResourceStar" then
 	req("BlockEdit")
 	req("LockController")
 	req("StarExit") -- QuickMenu > Back > confirm > back to the Cluster
-	req("CameraToggle") -- Tab: first person <-> third person
+	-- The LOBBY's camera, on the ground. Not a nicety: Roblox's default camera
+	-- claims the scroll wheel for zoom, so the hotbar never sees it and 1-9 becomes
+	-- the only way to change slots. T toggles first person; Alt+scroll zooms.
+	req("CameraController")
 	req("Music") -- same shuffle playlist as the lobby (SoundService.Musics)
 	-- Day/night. Lives under ClientServices, not src/Client, so it cannot go through
 	-- req() — that only looks in StarterPlayerScripts. Only the star place runs a

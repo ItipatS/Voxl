@@ -24,6 +24,10 @@ local hotbar = interface:WaitForChild("HotBar")
 local hbText = interface:FindFirstChild("HotBarText") -- Minecraft-style selected-item name
 
 local SLOTS = 9
+-- How much bigger the held slot sits. Small on purpose: the hotbar is a row of equal
+-- squares and the eye reads a few percent as "this one", where a large jump reads as
+-- the layout breaking. Hover and press build on top of this (UITween.rest).
+local HELD_SCALE = 1.12
 local held = 1 -- the hotbar slot currently held in-hand (was "selected")
 
 local function slotFrame(i: number): ImageButton?
@@ -139,7 +143,12 @@ local function applyHeldVisual()
 	for n = 1, SLOTS do
 		local slot = slotFrame(n)
 		if slot then
-			dimOverlay(slot).Visible = (n == held) -- gray dim on the held slot only, no scale
+			local isHeld = n == held
+			dimOverlay(slot).Visible = isHeld -- gray dim on the held slot
+			-- ...and it grows. Set as the RESTING scale rather than tweened directly,
+			-- so hovering the held slot enlarges from 1.12 instead of snapping to 1.06
+			-- and shrinking the thing you just selected.
+			UI.Tween.rest(slot, if isHeld then HELD_SCALE else 1)
 		end
 	end
 end
