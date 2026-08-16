@@ -21,13 +21,16 @@ local MeshedChunks = {}   -- key -> greedy Model (untouched chunks)
 local MeshedTextured: { [string]: boolean } = {} -- key -> was it built textured?
 local BlockChunks: { [string]: any } = {} -- key -> per-cell BlockChunk (edited chunks)
 
--- RENDER RADIUS, in chunks. This is the one number that moves the renderer's
--- `Scene` cost, because frustum culling happens AFTER the scene update: the engine
--- walks every part that exists inside this radius whether you are looking at it or
--- not. At 8 that is 17x17 = 289 chunks, ~351 boxes each — about 101,000 parts alive
--- at all times, cliffs behind you included.
+-- RENDER RADIUS, in chunks. 8 = 17x17 = 289 chunks, ~351 boxes each, so roughly
+-- 101,000 parts alive at once.
 --
--- Live-tunable for profiling, no rebuild needed:
+-- This is a GRAPHICS SETTING, not a performance bug: it is how much world exists
+-- around the player, and what a machine can hold is a property of the machine.
+-- Frustum culling happens after the engine's scene update, so these parts cost
+-- something whether or not they are on screen — which is why this, and not
+-- textures or shadows, is the dial to reach for on a weak client.
+--
+-- Live-tunable, no rebuild needed:
 --   Workspace:SetAttribute("RenderRadius", 5)
 local NEAR_RADIUS = 8
 local nearRadius = NEAR_RADIUS
@@ -39,17 +42,19 @@ end
 -- chunk is this many chunks away it's demoted back to the cheap greedy mesh (it's
 -- all client-side; the greedy build is diff-aware so it still shows your edits).
 local ACTIVE_EDIT_RADIUS = 3
--- TEXTURE LOD. Chunks this close carry per-face Texture objects; past it they are
--- flat block colour. This is the single biggest lever we have on frame time: a part
--- with a Texture child cannot be batched by the renderer, so every textured box is
--- its own batch AND its own pile of instances for the main thread to walk. Beyond a
--- few chunks the texture is sub-pixel anyway, and the colours were generated to
--- match the textures' mean, so the seam is very hard to see.
+-- TEXTURE LOD. Chunks within this many chunks carry per-face Texture objects; past
+-- it they fall back to flat block colour, which lets the renderer batch them (a part
+-- with a Texture child is excluded from batching entirely).
 --
--- Live-tunable while profiling, no rebuild needed:
---   Workspace:SetAttribute("TextureRadius", 0)   -- everything flat: the A/B
---   Workspace:SetAttribute("TextureRadius", 99)  -- everything textured: the before
-local TEXTURE_RADIUS = 3
+-- OFF by default. It was added chasing a frame-time problem it did not cause — the
+-- real one was PART_BUDGET below — and it costs real visual quality, so it is not
+-- something to pay for by default. It stays because it is the right knob for a weak
+-- client: the fallback is close to free visually, since tint.js normalises every
+-- generated texture so its mean colour equals the block's declared colour.
+--
+-- Live-tunable, no rebuild needed:
+--   Workspace:SetAttribute("TextureRadius", 3)   -- low-end rigs
+local TEXTURE_RADIUS = math.huge
 local textureRadius = TEXTURE_RADIUS
 -- Per-frame meshing is bounded by TIME, not a fixed count. This is self-adapting:
 -- cheap (flat/plains) chunks cost ~0.05 ms so we blast through ~100 in a frame,

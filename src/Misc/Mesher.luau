@@ -61,19 +61,19 @@ end
 -- its neighbour's facing side only if it is opaque (solid & not transparent).
 local isOpaque = Blocks.isOpaque
 
--- Does terrain cast shadows at all?
+-- Does terrain cast shadows? Yes. This constant only survives as a knob.
 --
--- false, and it is not a close call. Shadow casting is the most expensive thing a
--- part does, and a chunk is ~370 boxes: at render radius 8 that is six figures of
--- casters. The obvious refinement — only cast from boxes with sky above them —
--- was measured at 77% of boxes still casting, because in a voxel world most
--- exposed faces ARE the top of the ground. Removing a quarter of six figures is
--- not a fix.
+-- It was turned off chasing a frame-time problem shadows had nothing to do with:
+-- the real cause was the mesher handing the engine ~35,000 new parts in a single
+-- frame (see PART_BUDGET in ChunkClient). With that fixed, shadows cost what they
+-- always cost, and turning them off bought nothing while losing the thing that
+-- makes a cliff read as a cliff.
 --
--- Terrain still reads as lit: sun direction shades the faces by their normals, and
--- GlobalShadows stays on for characters and props, which is where a shadow
--- actually tells you something. Flip this to true to get the sky-facing rule back.
-local TERRAIN_CASTS_SHADOW = false
+-- Also not worth reviving: the "only boxes with sky above them cast" refinement.
+-- Measured at 77% of boxes still casting — in a voxel world most exposed faces ARE
+-- the top of the ground — so it was complexity for a quarter of a cost that turned
+-- out not to matter.
+local TERRAIN_CASTS_SHADOW = true
 
 local MAGENTA = Color3.fromRGB(255, 0, 255)
 local function applyBlockAppearance(part: BasePart, blockId: number, textured: boolean?)
@@ -530,7 +530,7 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance, textured: 
         part.Size = size
         part.CFrame = CFrame.new(center)
         applyBlockAppearance(part, id, textured)
-        part.CastShadow = TERRAIN_CASTS_SHADOW and ePY
+        part.CastShadow = TERRAIN_CASTS_SHADOW
         part.Parent = model
         partsBuilt += 1
 
@@ -695,7 +695,7 @@ function ChunkMesher.UpdateBlockCell(bc: BlockChunk, wx: number, y: number, wz: 
     end
     sizeCell(part, id, wx, y, wz)
     applyBlockAppearance(part, id)
-    part.CastShadow = TERRAIN_CASTS_SHADOW and ePY -- same rule as the greedy path
+    part.CastShadow = TERRAIN_CASTS_SHADOW
     applyCellFaces(part, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
 end
 
@@ -789,7 +789,7 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
                         local part = getPooledPart()
                         sizeCell(part, id, wx, y, wz)
                         applyBlockAppearance(part, id)
-                        part.CastShadow = TERRAIN_CASTS_SHADOW and ePY
+                        part.CastShadow = TERRAIN_CASTS_SHADOW
                         applyCellFaces(part, id, ePX, eNX, ePY, eNY, ePZ, eNZ)
                         part.Parent = model
                         partsBuilt += 1
