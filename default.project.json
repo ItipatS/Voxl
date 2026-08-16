@@ -32,7 +32,9 @@
       }
     },
     "ServerStorage": {
-      "$path": "src/ServerStorage"
+      "MapData": {
+        "$path": "src/ServerStorage/MapData"
+      }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {
