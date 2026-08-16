@@ -355,25 +355,38 @@ do
     -- run before BlockTextures had arrived, find nothing, and silently leave every
     -- block flat-coloured. That failure is invisible: the world still renders, just
     -- with none of the uploaded art.
+    local where = if parent then `{parent:GetFullName()}` else "(no script context)"
     local mod = if parent then parent:WaitForChild("BlockTextures", 10) else nil
     if mod and mod:IsA("ModuleScript") then
         local ok, tex = pcall(require, mod)
         if ok and type(tex) == "table" then
-            local applied = 0
+            local applied, skipped = 0, {}
             for name, faces in tex :: any do
                 local id = ID[name]
                 local d = if id then defs[id] else nil
                 if d and faces.top then
                     d.tex = { top = faces.top, side = faces.side or faces.top, bottom = faces.bottom or faces.side or faces.top }
                     applied += 1
+                elseif #skipped < 5 then
+                    table.insert(skipped, `{name}({if id then "no def" else "no id"})`)
                 end
             end
-            print(`[Blocks] {applied} textured blocks`)
+            local sample = defs[ID.Bricks]
+            print(
+                `[Blocks] applied {applied} textures from {where}.BlockTextures`
+                    .. `; Bricks.tex = {if sample and sample.tex then sample.tex.top else "NONE"}`
+            )
+            if #skipped > 0 then
+                warn(`[Blocks] {#skipped}+ entries had no matching block: {table.concat(skipped, ", ")}`)
+            end
         else
-            warn("Blocks: BlockTextures exists but failed to load —", tex)
+            warn(`[Blocks] BlockTextures exists at {where} but failed to load — {tex}`)
         end
     elseif parent then
-        warn("[Blocks] BlockTextures never replicated — every block will render as flat colour")
+        warn(
+            `[Blocks] no BlockTextures under {where} after 10s — every block that has no `
+                .. "hand-entered TEX id will render as flat colour + material"
+        )
     end
 end
 
