@@ -25,32 +25,17 @@ local constellation = require(game:GetService("ReplicatedStorage"):WaitForChild(
 local UIController = require(script.Parent:WaitForChild("UI")).Controller
 local FlightBoost = require(script.Parent:WaitForChild("FlightBoost"))
 local FlightStun = require(script.Parent:WaitForChild("FlightStun"))
+local FlightAnims = require(script.Parent:WaitForChild("FlightAnims"))
 
 --=====================================================================
--- CONFIG — paste your animation asset ids + tune the feel here.
+-- CONFIG — tune the feel here; the animation ids live in FlightAnims.
 --=====================================================================
--- Per-rig animation sets — R6 and R15 have different skeletons, so each needs
--- its own animations. The correct set is chosen at spawn from Humanoid.RigType.
--- (NOTE: your ids are under R15 — if those were actually the R6 set, swap them.)
-local ANIM = {
-	R6 = {
-		Idle    = "rbxassetid://84857892156947",  -- idle float
-		Forward = "rbxassetid://129532865648136", -- jet forward (rig rotated toward travel)
-		Ascend  = "rbxassetid://82374562787820",  -- Space, no WASD
-		Descend = "rbxassetid://82374562787820",  -- Shift/Ctrl, no WASD
-	},
-	R15 = {
-		Idle    = "rbxassetid://76548149812258", 
-		Forward = "rbxassetid://89525532104243",
-		Ascend  = "rbxassetid://140220722327217",
-		Descend = "rbxassetid://140220722327217",
-	},
-}
-
+-- The animation set + state machine live in FlightAnims, shared with the star
+-- place's StarFly (which cannot require THIS file: it self-starts on require, so
+-- pulling it in on the ground would begin zero-g lobby flight).
 local SPEED        = 160        -- cruise velocity (studs/s); halved for calmer travel (boost ×2.4 on Shift)
 local ACCEL        = 8          -- velocity smoothing (higher = snappier)
 local ROT_RESPONSE = 8        -- rig turn responsiveness (AlignOrientation)
-local FADE         = 1.5      -- animation crossfade (s)
 
 --=====================================================================
 
@@ -125,42 +110,8 @@ local function setup(character: Model)
 	hrp.CFrame = CFrame.lookAt(spawnPos, lookAt)
 	ao.CFrame = hrp.CFrame
 
-	-- Load animation tracks (skipped gracefully until you fill ANIM ids).
-	local function load(id: string): AnimationTrack?
-		if id == "" then
-			return nil
-		end
-		local a = Instance.new("Animation")
-		a.AnimationId = id
-		local track = animator:LoadAnimation(a)
-		track.Looped = true
-		track.Priority = Enum.AnimationPriority.Movement
-		return track
-	end
-	-- Pick the animation set for this rig (R6 avatars use the R6 set).
-	local set = if humanoid.RigType == Enum.HumanoidRigType.R6 then ANIM.R6 else ANIM.R15
-	local tracks: { [string]: AnimationTrack? } = {
-		Forward = load(set.Forward),
-		Ascend  = load(set.Ascend),
-		Descend = load(set.Descend),
-		Idle    = load(set.Idle),
-	}
-
-	local current: string? = nil
-	local function setState(state: string)
-		if current == state then
-			return
-		end
-		local old = if current then tracks[current] else nil
-		if old then
-			old:Stop(FADE)
-		end
-		local new = tracks[state]
-		if new and not new.IsPlaying then
-			new:Play(FADE)
-		end
-		current = state
-	end
+	local anims = FlightAnims.attach(humanoid)
+	local setState = anims.set
 
 	local targetVel = Vector3.zero
 	local conn: RBXScriptConnection

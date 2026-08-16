@@ -4,18 +4,23 @@
 -- Walking a 896-block imported map is not a way to inspect it, and falling off it
 -- is a death — so this is the survey tool.
 --
--- The flight itself is the LOBBY'S, copied from FlightController: PlatformStand +
--- AutoRotate off, a LinearVelocity for travel and an AlignOrientation for facing,
--- with the velocity lerped so it eases in and out. Same feel, same controls, same
--- code shape — there is no reason for a second way of flying to exist. What differs
--- is only what a star needs: it TOGGLES (the lobby is always flying), it hands
--- gravity and walking back when you switch off, and it runs at a walking-scale
--- speed so distances still read honestly.
+-- It is the LOBBY'S flight, not a lookalike: same movers (PlatformStand +
+-- LinearVelocity + AlignOrientation), same lerped velocity, and the same ANIMATION
+-- STATE MACHINE via FlightAnims — Forward with the rig rotated toward travel,
+-- Ascend/Descend on pure vertical thrust, Idle otherwise, all crossfaded. The first
+-- version of this file copied the movers and skipped the animations, so you flew
+-- around the map as a frozen T-pose with your feet pointing at the camera.
+--
+-- What legitimately differs is only what a star needs: it TOGGLES (the lobby is
+-- always flying), it hands gravity and walking back when you switch off, and it
+-- runs at a walking-scale speed so distances still read honestly.
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
+
+local FlightAnims = require(script.Parent:WaitForChild("FlightAnims"))
 
 local player = Players.LocalPlayer
 
@@ -23,6 +28,7 @@ local TOGGLE_KEY = Enum.KeyCode.F
 local SPEED = 60 -- studs/s ≈ 17 blocks/s: crosses the map, still reads as a place
 local BOOST = 4 -- shift multiplier
 local ACCEL = 6 -- velocity lerp rate, as in FlightController
+local ROT_RESPONSE = 8 -- rig turn responsiveness, as in FlightController
 
 -- Typing in the inventory shouldn't fly you across the island. The UI framework
 -- owns that answer; if it isn't up yet, assume not blocked.
@@ -41,12 +47,23 @@ local function blocked(): boolean
 	return UIController ~= nil and UIController.gameplayBlocked and UIController.gameplayBlocked()
 end
 
+-- Horizontal component of a look vector, for facing while ascending/descending or
+-- idling: without it the rig pitches to stare at the sky whenever the camera does.
+local function flatDir(v: Vector3, fallback: Vector3): Vector3
+	local f = Vector3.new(v.X, 0, v.Z)
+	if f.Magnitude < 1e-3 then
+		return fallback
+	end
+	return f.Unit
+end
+
 type Rig = {
 	humanoid: Humanoid,
 	hrp: BasePart,
 	att: Attachment,
 	lv: LinearVelocity,
 	ao: AlignOrientation,
+	anims: FlightAnims.Rig,
 	walkSpeed: number,
 	jumpHeight: number,
 	animate: LocalScript?,
@@ -62,6 +79,10 @@ local function stopFlying()
 	if not r then
 		return
 	end
+	-- Stop the flight tracks BEFORE re-enabling Animate, or the default script
+	-- starts its idle underneath a still-playing jet loop and the two blend into
+	-- something neither of them is.
+	r.anims.stop()
 	-- The movers are parented to the ROOT, not the attachment, so destroy each.
 	if r.lv.Parent then
 		r.lv:Destroy()
@@ -124,7 +145,7 @@ local function startFlying()
 	ao.Attachment0 = att
 	ao.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	ao.RigidityEnabled = false
-	ao.Responsiveness = 30
+	ao.Responsiveness = ROT_RESPONSE
 	ao.MaxTorque = math.huge
 	ao.CFrame = hrp.CFrame
 	ao.Parent = hrp
@@ -136,6 +157,7 @@ local function startFlying()
 		att = att,
 		lv = lv,
 		ao = ao,
+		anims = FlightAnims.attach(humanoid),
 		walkSpeed = walkSpeed,
 		jumpHeight = jumpHeight,
 		animate = if animate and animate:IsA("LocalScript") then animate else nil,
@@ -184,6 +206,7 @@ RunService.RenderStepped:Connect(function(dt: number)
 		- (down(UserInputService, Enum.KeyCode.LeftControl) and 1 or 0)
 
 	local dir = camCF.LookVector * fwd + camCF.RightVector * strafe + Vector3.yAxis * vert
+	local hasHoriz = fwd ~= 0 or strafe ~= 0
 	local moving = dir.Magnitude > 0.05
 	if moving then
 		dir = dir.Unit
@@ -197,9 +220,26 @@ RunService.RenderStepped:Connect(function(dt: number)
 	targetVel = targetVel:Lerp(want, math.clamp(ACCEL * dt, 0, 1))
 	r.lv.VectorVelocity = targetVel
 
+	-- Facing + animation, exactly as the lobby does it.
 	local pos = r.hrp.Position
-	if moving then
+	if hasHoriz then
+		r.anims.set("Forward")
+		-- Up-hint = camera up so the rig doesn't roll or flip when travel goes
+		-- near-vertical (look up + W), keeping the forward lean clean.
 		r.ao.CFrame = CFrame.lookAt(pos, pos + dir, camCF.UpVector)
+	elseif vert > 0 then
+		r.anims.set("Ascend")
+		r.ao.CFrame = CFrame.lookAt(pos, pos + flatDir(camCF.LookVector, r.hrp.CFrame.LookVector))
+	elseif vert < 0 then
+		r.anims.set("Descend")
+		r.ao.CFrame = CFrame.lookAt(pos, pos + flatDir(camCF.LookVector, r.hrp.CFrame.LookVector))
+	else
+		r.anims.set("Idle")
+		r.ao.CFrame = CFrame.lookAt(pos, pos + flatDir(camCF.LookVector, r.hrp.CFrame.LookVector))
+		-- Hold the root perfectly still. The camera follows the root, so any drift
+		-- there is camera drift; the idle float belongs in the ANIMATION, which
+		-- moves the body without moving what the camera is watching.
+		r.lv.VectorVelocity = Vector3.zero
 	end
 end)
 
