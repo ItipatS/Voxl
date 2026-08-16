@@ -137,6 +137,12 @@ local function configure(data: any)
 	positionSpawn(baked)
 	configured = true
 
+	-- Auto-load goes back ON now that there is a world to spawn into. It is turned
+	-- off at the top of this file so nobody lands in an unconfigured void — but it
+	-- was never turned back on, so dying was permanent: the character never
+	-- reloaded and the session was over. Deaths respawn normally from here.
+	Players.CharacterAutoLoads = true
+
 	-- Say out loud which world this is. "Nothing renders" has too many possible
 	-- causes to guess at from the client alone, and the first question is always
 	-- whether the server even loaded a map.
@@ -165,7 +171,11 @@ local function onPlayer(plr: Player)
 		end)
 		configure(if ok then data else nil)
 	end
-	plr:LoadCharacter()
+	-- Once configure() has re-enabled auto-load, later joiners already have a
+	-- character; loading a second one here would throw the first away mid-spawn.
+	if not plr.Character then
+		plr:LoadCharacter()
+	end
 end
 
 Players.PlayerAdded:Connect(onPlayer)

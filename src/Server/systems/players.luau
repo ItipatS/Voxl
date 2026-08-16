@@ -8,6 +8,20 @@ local world = require(std.world)
 local Player = cts.Player
 local Character = cts.Character
 
+local placemode = require(std.placemode)
+
+-- Movement is tuned PER PLACE, because the two places move completely differently.
+-- In the LOBBY FlightController takes the character over and zeroes WalkSpeed, so
+-- whatever is set here never shows. In the STAR you actually walk — and the shared
+-- value used to be 200 studs/s, which at BLOCK_SIZE 3.5 is 57 blocks a second.
+--
+-- 16 studs/s ≈ 4.6 blocks/s, near Minecraft's 4.3. JumpHeight clears one block and
+-- not two, which is a gameplay rule as much as a feel one: you step up a ledge, you
+-- don't hop a wall. [TUNE]
+local IS_STAR = placemode.Mode == "ResourceStar"
+local WALK_SPEED = if IS_STAR then 16 else 200
+local JUMP_HEIGHT = if IS_STAR then 5.2 else 100
+
 local conn = {}
 
 local function playersAdded(player: Player)
@@ -18,8 +32,8 @@ local function playersAdded(player: Player)
 		while rig.Parent ~= workspace do
 			task.wait()
 		end
-		rig.Humanoid.WalkSpeed = 200
-		rig.Humanoid.JumpHeight = 100
+		rig.Humanoid.WalkSpeed = WALK_SPEED
+		rig.Humanoid.JumpHeight = JUMP_HEIGHT
 		world:set(e, Character, rig)
 	end)
 end
