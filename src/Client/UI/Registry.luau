@@ -31,13 +31,16 @@ local PANELS: { { name: string, primary: string, cfg: any } } = {
 	-- The quick menu itself is a panel: it ships Visible = false and the Menu
 	-- button is what raises it (Quest / Map / Bag / Back live inside it).
 	{ name = "QuickMenu", primary = "QuickMenu", cfg = { group = "main" } },
-	-- Future panels — add the frame in Studio + a button below and they light up:
+	-- Future panels. None of these have a frame under Interface yet, so they don't
+	-- register and their buttons grey out (see `disable` below). Build the frame in
+	-- Studio and the button becomes live with no change here.
 	{ name = "Map", primary = "Map", cfg = { group = "main" } },
 	{ name = "Quest", primary = "Quest", cfg = { group = "main" } },
 	{ name = "Settings", primary = "Settings", cfg = { group = "main" } },
 }
 
--- button path (under Interface) → panel + action. Skipped if either is absent.
+-- button path (under Interface) → panel + action. A path that doesn't resolve is
+-- skipped; a button whose PANEL doesn't resolve is greyed out.
 local BUTTONS: { { path: string, panel: string, action: string } } = {
 	-- NOTE the capital Q. These read "quickMenu" for a long time, and
 	-- FindFirstChild is case-SENSITIVE — every path resolved to nil, and byPath
@@ -76,11 +79,30 @@ for _, p in PANELS do
 	end
 end
 
+-- A button for a panel that doesn't exist yet (Map, Quest) is greyed out and made
+-- unclickable, rather than left looking live and doing nothing. Nothing here names
+-- those panels: any button whose panel failed to register gets this, so the day a
+-- Map frame is added in Studio the button lights up on its own — the same rule the
+-- rest of this file runs on.
+local NOT_YET = Color3.fromRGB(85, 85, 95)
+
+local function disable(btn: GuiButton)
+	btn:SetAttribute("UIDisabled", true) -- bindFeedback skips these
+	btn.Interactable = false
+	btn.AutoButtonColor = false
+	if btn:IsA("ImageButton") then
+		btn.ImageColor3 = NOT_YET
+		btn.ImageTransparency = math.max(btn.ImageTransparency, 0.35)
+	else
+		btn.BackgroundColor3 = NOT_YET
+	end
+end
+
 -- ---- wire open/close buttons ------------------------------------------------
 for _, b in BUTTONS do
-	if registered[b.panel] then
-		local btn = byPath(b.path)
-		if btn and btn:IsA("GuiButton") then
+	local btn = byPath(b.path)
+	if btn and btn:IsA("GuiButton") then
+		if registered[b.panel] then
 			btn:SetAttribute("UISoundOwned", true) -- the panel open/close sound is the feedback
 			btn.MouseButton1Click:Connect(function()
 				if b.action == "close" then
@@ -89,6 +111,8 @@ for _, b in BUTTONS do
 					UIController.toggle(b.panel)
 				end
 			end)
+		else
+			disable(btn)
 		end
 	end
 end
@@ -101,8 +125,8 @@ local HOVER_CD = 0.06
 local lastHover = 0
 
 local function bindFeedback(btn: GuiButton)
-	if btn:GetAttribute("UIFeedback") then
-		return
+	if btn:GetAttribute("UIFeedback") or btn:GetAttribute("UIDisabled") then
+		return -- a disabled button must not hover, click-sound or scale
 	end
 	btn:SetAttribute("UIFeedback", true)
 	UITween.buttonFX(btn) -- uniform hover=brighter+bigger, press=dimmer+smaller
