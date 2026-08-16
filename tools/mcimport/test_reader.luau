@@ -87,6 +87,13 @@ for _, s in samples do
 		end
 		y -= 1
 	end
+	-- Below the island's keel is open air, so the walk down to the world floor picks
+	-- up a trailing air run that is not part of the column at all. Drop it, or every
+	-- column looks like it has one run too many.
+	while #got > 0 and got[#got][1] == 0 do
+		got[#got] = nil
+	end
+
 	local clippedHere = (top - map.yFloor + 1) < 0
 
 	-- Compare run for run. SOLID runs must match exactly — same block, same

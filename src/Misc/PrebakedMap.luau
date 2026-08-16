@@ -43,6 +43,15 @@ local HEADER = 16
 local IDX_ENTRY = 10
 local MAX_CACHED_CHUNKS = 600 -- decoded chunks kept; a render radius of 8 needs ~290
 
+-- How much rock sits under a column's shell before the void starts.
+--
+-- "Below the shell is Stone" used to mean stone forever, which is why the world had
+-- no underside: an island with no bottom has no bottom FACE either, so from below it
+-- was invisible. A star is a floating island, so give it a keel — a finite slab of
+-- rock that follows the terrain's contour and then stops. Deep under a mountain,
+-- shallow under a beach, and something to see when you fly beneath it. [TUNE]
+local ISLAND_KEEL = 12
+
 export type Source = {
     name: string,
     radius: number,
@@ -159,8 +168,10 @@ local function decodeRecord(rec: buffer, yFloor: number): Chunk
         local nRuns = buffer.readu8(rec, p + 1)
         p += 2
         if nRuns > 0 then
-            if yBot < yBottom then
-                yBottom = yBot
+            -- the keel bottom, not the shell bottom: that is where this chunk ends
+            local keel = math.max(yFloor, yBot - ISLAND_KEEL)
+            if keel < yBottom then
+                yBottom = keel
             end
             local total = 0
             for r = 0, nRuns - 1 do
@@ -183,7 +194,10 @@ local function decodeRecord(rec: buffer, yFloor: number): Chunk
         local nRuns = buffer.readu8(rec, q + 1)
         if nRuns > 0 then
             local base = ci * span
-            buffer.fill(blocks, base, STONE, yBot - yFloor) -- island interior
+            -- Island interior, but only ISLAND_KEEL deep — everything under that
+            -- stays air, which is what gives the island a bottom to draw.
+            local keel = math.max(yFloor, yBot - ISLAND_KEEL)
+            buffer.fill(blocks, base + (keel - yFloor), STONE, yBot - keel)
             local y = yBot - yFloor
             for r = 0, nRuns - 1 do
                 local id = buffer.readu8(rec, q + 2 + r * 2)
@@ -234,11 +248,8 @@ local function makeMap(
         if buffer.readu8(c.tops, ci) == 0 then
             return 0 -- void column
         end
-        if y < yFloor then
-            return STONE -- island interior
-        end
-        if y > c.yTop then
-            return 0
+        if y < yFloor or y > c.yTop then
+            return 0 -- below the keel or above the terrain: open sky either way
         end
         return buffer.readu8(c.blocks, ci * c.span + (y - yFloor))
     end
