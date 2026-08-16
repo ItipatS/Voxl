@@ -51,6 +51,21 @@ local function setDaylight()
 end
 setDaylight()
 
+-- WATER. The mesher no longer builds water out of transparent parts; it writes the
+-- water cells into Terrain, which is one render object for the whole world and
+-- brings swimming, buoyancy and underwater fog with it. What it does NOT bring is
+-- a look — default Terrain water is a flat blue-grey. These are Terrain properties,
+-- so setting them on the server replicates to every client that fills water in.
+local function setWater()
+	local terrain = Workspace.Terrain
+	terrain.WaterColor = Color3.fromRGB(28, 92, 140)
+	terrain.WaterTransparency = 0.72 -- you can see the seabed, but not to the horizon
+	terrain.WaterReflectance = 0.08 -- a little sky, not a mirror
+	terrain.WaterWaveSize = 0.08 -- blocks are 3.5 studs; big waves swallow the shore
+	terrain.WaterWaveSpeed = 6
+end
+setWater()
+
 local configured = false
 
 -- The island heart is (by design) the star's rarest, often tallest/wildest biome — a bad place

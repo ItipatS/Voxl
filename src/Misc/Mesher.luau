@@ -168,7 +168,96 @@ for id, d in BlockDefs do
     end
 end
 
-local function runGreedy3D(chunk: ClientChunk, emit: Emit)
+-- ========== water is Terrain, not parts ==========
+-- Water was the worst-behaved block we had: transparent, so it can never batch and
+-- every fragment behind it is redrawn, and an ocean is a wide flat sheet aimed
+-- straight at the camera — the exact shape overdraw hurts most. It was 5.6% of the
+-- boxes on the imported map and a good deal more than 5.6% of the cost.
+--
+-- Roblox already has water that is one render object for the whole world, with
+-- waves, buoyancy, swimming and underwater fog attached to it. So the mesher emits
+-- no water boxes at all; it writes the water cells into Terrain instead. This is
+-- client-side, like the rest of meshing — nothing is replicated, each client fills
+-- in the water for the chunks it has, and it is cleared again when the chunk
+-- unloads.
+local BLOCK_WATER = BLOCK.Water
+local VOXEL = 4 -- Terrain's voxel size; fixed by Roblox, not ours to choose
+
+local terrainCache: Terrain? = nil
+local function terrain(): Terrain
+    -- Resolved on first use, not at require time: the mesher's test harness loads
+    -- this module with no DataModel and never reaches a terrain write.
+    local t = terrainCache
+    if not t then
+        t = game:GetService("Workspace").Terrain
+        terrainCache = t
+    end
+    return t :: Terrain
+end
+
+-- Fill this chunk's water into Terrain. `isWater` is asked in WORLD block coords.
+-- Returns the region written, so unloading the chunk can clear exactly it.
+local function writeWaterTerrain(
+    cx: number, cz: number, yLo: number, yHi: number,
+    isWater: (number, number, number) -> boolean
+): Region3
+    local wide = CHUNK_SIZE * BLOCK_SIZE
+    local x0, z0 = cx * wide, cz * wide
+    -- A chunk is 16 x 3.5 = 56 studs, which is 14 whole terrain voxels, so the grid
+    -- lands exactly on chunk edges and two chunks can never write the same voxel.
+    -- Only Y grows here (blocks are 3.5 studs and voxels are 4).
+    local region = Region3.new(
+        Vector3.new(x0, yLo * BLOCK_SIZE, z0),
+        Vector3.new(x0 + wide, (yHi + 1) * BLOCK_SIZE, z0 + wide)
+    ):ExpandToGrid(VOXEL)
+
+    local size = region.Size
+    local origin = region.CFrame.Position - size * 0.5
+    local nx = math.round(size.X / VOXEL)
+    local ny = math.round(size.Y / VOXEL)
+    local nz = math.round(size.Z / VOXEL)
+
+    local AIR, WATER = Enum.Material.Air, Enum.Material.Water
+    local mats, occ = table.create(nx), table.create(nx)
+    for i = 1, nx do
+        local mCol, oCol = table.create(ny), table.create(ny)
+        -- each voxel takes the block its CENTRE falls in
+        local wx = math.floor((origin.X + (i - 0.5) * VOXEL) / BLOCK_SIZE)
+        for j = 1, ny do
+            local mRow, oRow = table.create(nz), table.create(nz)
+            local wy = math.floor((origin.Y + (j - 0.5) * VOXEL) / BLOCK_SIZE)
+            for k = 1, nz do
+                local wz = math.floor((origin.Z + (k - 0.5) * VOXEL) / BLOCK_SIZE)
+                if isWater(wx, wy, wz) then
+                    mRow[k], oRow[k] = WATER, 1
+                else
+                    mRow[k], oRow[k] = AIR, 0
+                end
+            end
+            mCol[j], oCol[j] = mRow, oRow
+        end
+        mats[i], occ[i] = mCol, oCol
+    end
+
+    terrain():WriteVoxels(region, VOXEL, mats, occ)
+    return region
+end
+
+-- Which chunk model owns which stretch of water, so unloading clears it.
+local WaterRegions: { [Instance]: Region3 } = {}
+
+local function clearWaterTerrain(model: Instance)
+    local region = WaterRegions[model]
+    if region then
+        WaterRegions[model] = nil
+        terrain():FillRegion(region, VOXEL, Enum.Material.Air)
+    end
+end
+
+-- Called once per chunk that contains water, with the water's Y range and a probe.
+type EmitWater = (yLo: number, yHi: number, isWater: (number, number, number) -> boolean) -> ()
+
+local function runGreedy3D(chunk: ClientChunk, emit: Emit, emitWater: EmitWater?)
     local cx, cz = chunk.cx, chunk.cz
     local baseX = cx * CHUNK_SIZE * BLOCK_SIZE
     local baseZ = cz * CHUNK_SIZE * BLOCK_SIZE
@@ -260,6 +349,10 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
 
     -- exposed = a cell with at least one face the player could see
     local exposed = table.create(layer * span, 0)
+    -- Water never reaches `exposed`: it becomes Terrain instead. Collected here
+    -- rather than in a second sweep because this loop already has the grid open.
+    local water: { [number]: boolean } = {}
+    local wLo, wHi = math.huge, -math.huge
     for ly = 0, span - 1 do
         local y = gLo + ly
         local sbase = ly * slab
@@ -267,7 +360,11 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
         for z = 0, CS - 1 do
             for x = 0, CS - 1 do
                 local id = grid[(x + 1) + (z + 1) * GW + sbase + 1]
-                if id ~= 0
+                if id == BLOCK_WATER then
+                    water[x + z * CS + ebase + 1] = true
+                    if y < wLo then wLo = y end
+                    if y > wHi then wHi = y end
+                elseif id ~= 0
                     and (not hidden(x + 1, y, z, id) or not hidden(x - 1, y, z, id)
                         or not hidden(x, y + 1, z, id) or not hidden(x, y - 1, z, id)
                         or not hidden(x, y, z + 1, id) or not hidden(x, y, z - 1, id)) then
@@ -275,6 +372,17 @@ local function runGreedy3D(chunk: ClientChunk, emit: Emit)
                 end
             end
         end
+    end
+
+    if emitWater and wHi >= wLo then
+        local ox, oz = cx * CS, cz * CS
+        emitWater(wLo, wHi, function(wx: number, wy: number, wz: number): boolean
+            local lx, lz = wx - ox, wz - oz
+            if lx < 0 or lx >= CS or lz < 0 or lz >= CS or wy < gLo or wy > maxY then
+                return false
+            end
+            return water[lx + lz * CS + (wy - gLo) * layer + 1] == true
+        end)
     end
 
     -- greedy grow +X, then +Z (whole row), then +Y (whole slab)
@@ -393,6 +501,8 @@ function ChunkMesher.BuildChunk(chunk: ClientChunk, parent: Instance): Model
             if ePZ then addFace(part, Enum.NormalId.Back, tex.side) end
             if eNZ then addFace(part, Enum.NormalId.Front, tex.side) end
         end
+    end, function(yLo, yHi, isWater)
+        WaterRegions[model] = writeWaterTerrain(chunk.cx, chunk.cz, yLo, yHi, isWater)
     end)
 
     model.Parent = parent
@@ -411,6 +521,7 @@ local function recyclePart(part: BasePart)
 end
 
 function ChunkMesher.RecycleChunkModel(model: Model)
+    clearWaterTerrain(model)
     for _, child in ipairs(model:GetChildren()) do
         if child:IsA("BasePart") then
             recyclePart(child)
@@ -605,13 +716,24 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
         return n == own and SLAB_H[own] == nil -- stacked slabs don't touch
     end
 
+    -- Same deal as the greedy path: water is Terrain, never a cell part. Without
+    -- this an edited chunk would sprout back the water boxes its neighbours don't
+    -- have, on top of the Terrain water already there.
+    local layer = CS * CS
+    local water: { [number]: boolean } = {}
+    local wLo, wHi = math.huge, -math.huge
+
     for ly = 0, span - 1 do
         local y = gLo + ly
         local sbase = ly * slab
         for z = 0, CS - 1 do
             for x = 0, CS - 1 do
                 local id = grid[(x + 1) + (z + 1) * GW + sbase + 1]
-                if id ~= 0 then
+                if id == BLOCK_WATER then
+                    water[x + z * CS + ly * layer + 1] = true
+                    if y < wLo then wLo = y end
+                    if y > wHi then wHi = y end
+                elseif id ~= 0 then
                     local ePX = not hidden(x + 1, y, z, id)
                     local eNX = not hidden(x - 1, y, z, id)
                     local ePY = not hidden(x, y + 1, z, id)
@@ -633,11 +755,23 @@ function ChunkMesher.BuildBlockChunk(chunk: ClientChunk, parent: Instance): Bloc
         end
     end
 
+    if wHi >= wLo then
+        local ox, oz = cx * CS, cz * CS
+        WaterRegions[model] = writeWaterTerrain(cx, cz, wLo, wHi, function(wx, wy, wz)
+            local lx, lz = wx - ox, wz - oz
+            if lx < 0 or lx >= CS or lz < 0 or lz >= CS or wy < gLo or wy > maxY then
+                return false
+            end
+            return water[lx + lz * CS + (wy - gLo) * layer + 1] == true
+        end)
+    end
+
     model.Parent = parent
     return { model = model, cells = cells }
 end
 
 function ChunkMesher.RecycleBlockChunk(bc: BlockChunk)
+    clearWaterTerrain(bc.model)
     for _, part in bc.cells do
         recyclePart(part)
     end
