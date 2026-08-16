@@ -27,7 +27,7 @@ local LOBBY_SYSTEMS = { "lobby", "constellation", "collectables", "asteroids", "
 -- replaces the old boot-time `spawn` system).
 -- EquipService is here as well as in the Lobby now: the star place runs the same
 -- item hotbar, so it fires EquipItem, and without this nothing would answer it.
-local RESOURCE_SYSTEMS = { "starworld", "ChunkServer", "players", "BlockEditServer", "PlayerStore", "crafting", "EquipService" }
+local RESOURCE_SYSTEMS = { "starworld", "ChunkServer", "players", "BlockEditServer", "PlayerStore", "crafting", "EquipService", "daynight" }
 
 local SYSTEMS = if placemode.Mode == "ResourceStar" then RESOURCE_SYSTEMS else LOBBY_SYSTEMS
 

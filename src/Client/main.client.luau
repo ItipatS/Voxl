@@ -45,6 +45,10 @@ if placemode.Mode == "ResourceStar" then
 	req("HeldTools") -- held-tool activation → behavior + particle distance-LOD (doc 20)
 	req("BlockEdit")
 	req("LockController")
+	-- Day/night. Lives under ClientServices, not src/Client, so it cannot go through
+	-- req() — that only looks in StarterPlayerScripts. Only the star place runs a
+	-- cycle: the lobby is deep space, where permanent night is correct.
+	require(ReplicatedStorage.ClientServices.EventHandler.DayNightRenderer)
 else
 	-- LOBBY (The Cluster) — zero-g jet flight, stars, black hole, collectables.
 	req("FlightController")
@@ -57,7 +61,6 @@ else
 	req("MawWarning") -- ominous void-zone sphere at the maw (dust/stars stop generating inside it)
 	req("UniverseField") -- procedural star frontier (std/universe): tier-coloured orbs, cell load/unload
 	req("Prompts") -- styled ProximityPrompt UI (expressive-prompts) — Init before prompts exist
-	req("ResourceStarEntry")
 	req("UI") -- the UI framework (Controller/Sound/Tween/Notifier + registry bootstrap) — doc 19
 	req("ZoneWatcher") -- announces biome/zone changes as you fly
 	req("ItemMirror") -- item inventory + weight mirror; Star Seed planting lives here (doc 17)

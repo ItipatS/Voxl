@@ -37,10 +37,12 @@ Players.CharacterAutoLoads = true
 -- DAYLIGHT. The lobby is deep space, so its Lighting is permanent night — and the
 -- star place inherits that same authored Lighting, which is why the ground world
 -- is pitch black. A star is a place with a sun in the sky, so set day on arrival.
--- Server-side Lighting replicates, so this is one place to change. A real
--- day/night cycle can drive ClockTime later; this just stops it being unplayable.
+-- Server-side Lighting replicates, so this is one place to change.
+--
+-- ClockTime is NOT set here any more: `systems/daynight` owns it, and every client
+-- recomputes it per frame from the replicated clock. Pinning it to 14 would be
+-- overwritten within a frame on the client and fought over forever on the server.
 local function setDaylight()
-	Lighting.ClockTime = 14 -- early afternoon: long enough shadows to read depth
 	Lighting.GeographicLatitude = 20
 	Lighting.Brightness = 2.5
 	Lighting.Ambient = Color3.fromRGB(90, 95, 105)
@@ -251,7 +253,38 @@ local function fallbackData(): any
 	}
 end
 
+-- What keys a rejected teleport payload actually had — the one fact that turns
+-- "why am I in the test star" into a one-line diagnosis.
+local function shapeOf(data: any): string
+	local keys = {}
+	if type(data) == "table" then
+		for k in data do
+			keys[#keys + 1] = tostring(k)
+		end
+		table.sort(keys)
+	end
+	return if #keys > 0 then table.concat(keys, ", ") else "<none>"
+end
+
 local function configure(data: any)
+	-- `if not data` is not enough, and the difference cost a real bug.
+	--
+	-- A client-side entry path used to teleport with SetTeleportData({ biome = "Forest" }).
+	-- That table is truthy, so the fallback was skipped, and then every field it
+	-- read was nil: seed fell to TEST, radius fell to TEST, biomes fell to TEST,
+	-- and `starMap` was nil so no baked map loaded at all. You pressed enter on
+	-- Aldermoor and arrived in the procedural test star, with nothing in the log
+	-- saying so — the "wanted baked map" warning below is inside `if map then`,
+	-- and map was nil.
+	--
+	-- So validate the SHAPE. Teleport data without a starSeed is not teleport data,
+	-- whatever else is in it.
+	if data and not data.starSeed then
+		warn(`[starworld] teleport data has no starSeed (keys: {shapeOf(data)}) — `
+			.. "treating it as a direct join. Whoever teleported this player is not "
+			.. "using the EnterHub/EnterStar path in starentry.")
+		data = nil
+	end
 	if not data then
 		data = fallbackData()
 	end
@@ -274,6 +307,7 @@ local function configure(data: any)
 	-- world under ServerStorage.MapData and replaces generation wholesale. The blob
 	-- stays here; clients are sent single chunks by ChunkServer as they walk.
 	local map: string? = data and data.starMap
+	local starName: string = (data and data.starName) or "?"
 
 	local baked, bakedMap = starconfig.applyServer({ seed = seed, radius = radius, biomes = biomes, map = map })
 	if baked then
@@ -291,7 +325,7 @@ local function configure(data: any)
 	if bakedMap then
 		local m = bakedMap.meta
 		print(
-			`[starworld] BAKED "{m.name}": {m.nx}x{m.nz} chunks from ({m.cx0},{m.cz0}), `
+			`[starworld] {starName} (seed {seed}) — BAKED "{m.name}": {m.nx}x{m.nz} chunks from ({m.cx0},{m.cz0}), `
 				.. `radius {m.radius}, yFloor {m.yFloor}`
 		)
 	else
@@ -299,7 +333,7 @@ local function configure(data: any)
 		for i, b in biomes do
 			names[i] = `{b.type}T{b.tier}`
 		end
-		print(`[starworld] PROCEDURAL seed {seed}, radius {radius}, biomes {table.concat(names, " ")}`)
+		print(`[starworld] {starName} — PROCEDURAL seed {seed}, radius {radius}, biomes {table.concat(names, " ")}`)
 		if map then
 			warn(`[starworld] wanted baked map "{map}" but it did not load — check ServerStorage.MapData`)
 		end
@@ -317,6 +351,11 @@ local function onPlayer(plr: Player)
 	local ok, data = pcall(function()
 		return plr:GetJoinData().TeleportData
 	end)
+	if not ok then
+		-- A failed read and a direct Studio join both end up at the fallback, and
+		-- they are very different situations: one means the handoff broke.
+		warn(`[starworld] could not read teleport data for {plr.Name}: {data}`)
+	end
 	configure(if ok then data else nil)
 end
 
