@@ -162,6 +162,11 @@ export type BlockDef = {
     render: string?, -- "cube" (default); "cross"/"vine"/"hang"/"fluid" arrive later
     opaque: boolean?, -- default true; false = neighbours behind it render (leaves/glass)
     alpha: number?, -- part transparency (1 = cutout via texture alpha)
+    -- Leaves are SmoothPlastic, not LeafyGrass, and that is deliberate: the leaf
+    -- texture already draws the leaves, so a PBR material underneath only adds
+    -- shading work and a surface pattern showing through the cutout holes.
+    -- SmoothPlastic is the cheapest thing to shade and stays out of the way.
+    --
     -- Colour to use when this block is drawn WITHOUT its texture (distant chunks —
     -- see TEXTURE_RADIUS in ChunkClient). Only needed by blocks whose part is fully
     -- transparent and whose texture IS the block: leaves are alpha = 1 over a white
@@ -200,7 +205,7 @@ local defs: { [number]: BlockDef } = {
     [ID.Stone] = { name = "Stone", tex = uniform(TEX.stone), color = C(130, 130, 130), material = Enum.Material.Slate, placeable = true },
     [ID.Snow] = { name = "Snow", tex = uniform(TEX.snow), color = C(255, 255, 255), material = Enum.Material.Snow, placeable = true },
     [ID.OakLog] = { name = "Oak Log", tex = cube(TEX.oakTop, TEX.oakSide, TEX.oakTop), color = C(255, 255, 255), material = W, placeable = true },
-    [ID.OakLeaves] = { name = "Oak Leaves", tex = uniform(TEX.oakLeaf), color = C(255, 255, 255), lodColor = C(80, 101, 41), material = Enum.Material.LeafyGrass, placeable = true, opaque = false, alpha = 1 },
+    [ID.OakLeaves] = { name = "Oak Leaves", tex = uniform(TEX.oakLeaf), color = C(255, 255, 255), lodColor = C(80, 101, 41), material = Enum.Material.SmoothPlastic, placeable = true, opaque = false, alpha = 1 },
 
     [ID.CoarseDirt] = { name = "Coarse Dirt", tex = uniform(TEX.coarseDirt), color = C(120, 90, 64), material = Enum.Material.Ground, placeable = true },
     [ID.Podzol] = { name = "Podzol", tex = cube(TEX.podzolTop, TEX.podzolSide, TEX.dirt), color = C(90, 64, 30), material = Enum.Material.Ground, placeable = true },
@@ -220,13 +225,13 @@ local defs: { [number]: BlockDef } = {
     [ID.PackedIce] = { name = "Packed Ice", tex = uniform(TEX.packedIce), color = C(180, 210, 245), material = Enum.Material.Glacier, placeable = true },
 
     [ID.BirchLog] = { name = "Birch Log", tex = cube(TEX.birchTop, TEX.birchSide, TEX.birchTop), color = C(255, 255, 255), material = W, placeable = true },
-    [ID.BirchLeaves] = { name = "Birch Leaves", tex = uniform(TEX.birchLeaf), color = C(255, 255, 255), lodColor = C(67, 88, 45), material = Enum.Material.LeafyGrass, placeable = true, opaque = false, alpha = 1 },
+    [ID.BirchLeaves] = { name = "Birch Leaves", tex = uniform(TEX.birchLeaf), color = C(255, 255, 255), lodColor = C(67, 88, 45), material = Enum.Material.SmoothPlastic, placeable = true, opaque = false, alpha = 1 },
     [ID.SpruceLog] = { name = "Spruce Log", tex = cube(TEX.spruceTop, TEX.spruceSide, TEX.spruceTop), color = C(255, 255, 255), material = W, placeable = true },
-    [ID.SpruceLeaves] = { name = "Spruce Leaves", tex = uniform(TEX.spruceLeaf), color = C(255, 255, 255), lodColor = C(31, 47, 43), material = Enum.Material.LeafyGrass, placeable = true, opaque = false, alpha = 1 },
+    [ID.SpruceLeaves] = { name = "Spruce Leaves", tex = uniform(TEX.spruceLeaf), color = C(255, 255, 255), lodColor = C(31, 47, 43), material = Enum.Material.SmoothPlastic, placeable = true, opaque = false, alpha = 1 },
     [ID.JungleLog] = { name = "Jungle Log", tex = cube(TEX.jungleTop, TEX.jungleSide, TEX.jungleTop), color = C(255, 255, 255), material = W, placeable = true },
-    [ID.JungleLeaves] = { name = "Jungle Leaves", tex = uniform(TEX.jungleLeaf), color = C(255, 255, 255), lodColor = C(24, 91, 5), material = Enum.Material.LeafyGrass, placeable = true, opaque = false, alpha = 1 },
+    [ID.JungleLeaves] = { name = "Jungle Leaves", tex = uniform(TEX.jungleLeaf), color = C(255, 255, 255), lodColor = C(24, 91, 5), material = Enum.Material.SmoothPlastic, placeable = true, opaque = false, alpha = 1 },
     [ID.AcaciaLog] = { name = "Acacia Log", tex = cube(TEX.acaciaTop, TEX.acaciaSide, TEX.acaciaTop), color = C(255, 255, 255), material = W, placeable = true },
-    [ID.AcaciaLeaves] = { name = "Acacia Leaves", tex = uniform(TEX.acaciaLeaf), color = C(255, 255, 255), lodColor = C(56, 83, 38), material = Enum.Material.LeafyGrass, placeable = true, opaque = false, alpha = 1 },
+    [ID.AcaciaLeaves] = { name = "Acacia Leaves", tex = uniform(TEX.acaciaLeaf), color = C(255, 255, 255), lodColor = C(56, 83, 38), material = Enum.Material.SmoothPlastic, placeable = true, opaque = false, alpha = 1 },
 
     [ID.CoalOre] = { name = "Coal Ore", tex = uniform(TEX.coalOre), color = C(60, 60, 60), material = Enum.Material.Slate, placeable = true },
     [ID.IronOre] = { name = "Iron Ore", tex = uniform(TEX.ironOre), color = C(180, 150, 130), material = Enum.Material.Slate, placeable = true },
@@ -272,7 +277,7 @@ flat(ID.JunglePlanks, "Jungle Planks", C(160, 115, 80), W)
 flat(ID.AcaciaPlanks, "Acacia Planks", C(168, 90, 50), W)
 flat(ID.DarkOakPlanks, "Dark Oak Planks", C(66, 43, 20), W)
 flat(ID.DarkOakLog, "Dark Oak Log", C(60, 46, 26), W)
-flat(ID.DarkOakLeaves, "Dark Oak Leaves", C(46, 110, 30), M.LeafyGrass, { opaque = false })
+flat(ID.DarkOakLeaves, "Dark Oak Leaves", C(46, 110, 30), M.SmoothPlastic, { opaque = false })
 
 flat(ID.Glass, "Glass", C(220, 240, 250), M.Glass, { opaque = false, alpha = 0.6 })
 
