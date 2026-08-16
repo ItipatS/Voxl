@@ -305,6 +305,17 @@ struct StarSlot {
     cz: i16,
 }
 
+-- Entering one of the five HUB-TOWNS. They aren't universe slots — they're fixed
+-- constellation geography (std/constellation HUBS) — so they can't ride EnterStar,
+-- which is keyed by slot. The index is all the client needs to send; the server
+-- looks up the hub's world (baked map or rolled biomes) and validates the range.
+event EnterHub {
+    From: Client,
+    Type: Reliable,
+    Call: SingleSync,
+    Data: u8
+}
+
 event EnterStar {
     From: Client,
     Type: Reliable,

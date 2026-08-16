@@ -49,37 +49,13 @@ export type Star = {
 	types: { string }, -- 3 featured resource types (shown on approach)
 	biomes: { { type: string, tier: number } }, -- per-type biome tiers (mostly T1, ≤1 T5)
 	name: string, -- procedural Latin/scientific default name (overridden on claim)
-	map: string?, -- LANDMARK only: a baked world under Misc.MapData (doc 23)
-	radius: number?, -- LANDMARK only: that world's own footprint, in blocks
 }
 
--- ===== LANDMARK stars (doc 23) =====
--- Hand-authored fixtures in a procedural frontier. A landmark ALWAYS occupies its slot
--- — it ignores the density roll and the weekly reshuffle — and its world is a BAKED map
--- instead of a rolled island. Permanent, findable, identical for everyone: the frontier
--- needs a few places that are somewhere rather than anywhere.
-export type Landmark = {
-	slot: { number },
-	map: string,
-	name: string,
-	radius: number,
-	tier: number,
-	types: { string },
-	biomes: { { type: string, tier: number } },
-}
-
-local LANDMARKS: { Landmark } = {
-	{
-		slot = { 3, 0, 0 }, -- ~28k studs out: outside the maw void, near the starter ring
-		map = "FantasyMedieval",
-		name = "Aldermoor",
-		radius = 448,
-		tier = 3,
-		types = { "Flora", "Stone", "Bog" },
-		biomes = { { type = "Flora", tier = 3 }, { type = "Stone", tier = 2 }, { type = "Bog", tier = 2 } },
-	},
-}
-M.LANDMARKS = LANDMARKS
+-- NOTE: there is deliberately no "fixed star" concept in here. The universe is the
+-- FRONTIER — unlimited, weekly-reshuffled, seed-derived — and a permanent
+-- hand-authored place is the opposite of that. The five hub-towns already are the
+-- fixed geography (std/constellation HUBS), so a baked world belongs on one of
+-- those, not on a slot pinned inside a generator built to reshuffle.
 
 -- ---- deterministic hashing (exact in f64; stable across server + client) -----
 local P = 2147483647 -- 2^31-1 (prime)
@@ -192,36 +168,9 @@ function M.buildStar(cx: number, cy: number, cz: number, seed: number): Star
 	return { slot = { cx, cy, cz }, pos = pos, seed = seed, tier = maxTier, types = types, biomes = biomes, name = name }
 end
 
--- The landmark occupying a slot, as a full Star (nil if the slot holds none). Its position
--- is still slot-derived, so it sits in the field exactly like any other star — it just never
--- moves, never disappears, and carries a baked world.
-function M.landmarkAt(cx: number, cy: number, cz: number): Star?
-	for _, L in LANDMARKS do
-		if L.slot[1] == cx and L.slot[2] == cy and L.slot[3] == cz then
-			local s = M.SLOT_SIZE
-			return {
-				slot = { cx, cy, cz },
-				pos = Vector3.new((cx + 0.5) * s, (cy + 0.5) * s, (cz + 0.5) * s),
-				seed = 0, -- unused: a baked world isn't rolled from a seed
-				tier = L.tier,
-				types = L.types,
-				biomes = L.biomes,
-				name = L.name,
-				map = L.map,
-				radius = L.radius,
-			}
-		end
-	end
-	return nil
-end
-
 -- The UNCLAIMED star in a slot this week (nil if the slot is empty this week or falls in the
 -- maw void). Callers overlay claimed stars + skip claimed slots themselves (ClaimedCoords).
 function M.starAt(cx: number, cy: number, cz: number, week: number): Star?
-	local landmark = M.landmarkAt(cx, cy, cz)
-	if landmark then
-		return landmark -- fixed: no density roll, no weekly reshuffle
-	end
 	local rng = Random.new(slotSeed(cx, cy, cz, week))
 	if rng:NextNumber() >= M.DENSITY then
 		return nil -- no star in this slot this week

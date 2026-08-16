@@ -175,7 +175,7 @@ Queue.Unreliable[1] = table.create(256)
 Queue.Reliable[16] = table.create(256)
 Queue.Reliable[17] = table.create(256)
 Queue.Reliable[19] = table.create(256)
-Queue.Reliable[21] = table.create(256)
+Queue.Reliable[22] = table.create(256)
 Queue.Unreliable[2] = table.create(256)
 export type ChunkCoord = { cx: number, cz: number }
 export type MapChunk = { cx: number, cz: number, raw: number, data: buffer }
@@ -665,10 +665,17 @@ function SerdesFunctions.ReadEVENT_DustCooldown(): ({ { ref: { cx: number, cy: n
 	return Value
 end
 
+function SerdesFunctions.WriteEVENT_EnterHub(Value: number): ()
+	-- Allocate BLOCK: 2 bytes
+	local BLOCK_START = Allocate(2)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 20)
+	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value)
+end
+
 function SerdesFunctions.WriteEVENT_EnterStar(Value: { cx: number, cy: number, cz: number }): ()
 	-- Allocate BLOCK: 7 bytes
 	local BLOCK_START = Allocate(7)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 20)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 21)
 	buffer.writei16(SendBuffer, BLOCK_START + 1, Value.cx)
 	buffer.writei16(SendBuffer, BLOCK_START + 3, Value.cy)
 	buffer.writei16(SendBuffer, BLOCK_START + 5, Value.cz)
@@ -692,14 +699,14 @@ end
 function SerdesFunctions.WriteEVENT_BoostState(Value: boolean): ()
 	-- Allocate BLOCK: 2 bytes
 	local BLOCK_START = Allocate(2)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 22)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 23)
 	buffer.writeu8(SendBuffer, BLOCK_START + 1, Value and 1 or 0)
 end
 
 function SerdesFunctions.WriteEVENT_Craft(Value: string): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 23)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 24)
 	local Length = #Value
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Length)
 	Allocate(Length)
@@ -709,7 +716,7 @@ end
 function SerdesFunctions.WriteEVENT_EquipItem(Value: number): ()
 	-- Allocate BLOCK: 3 bytes
 	local BLOCK_START = Allocate(3)
-	buffer.writeu8(SendBuffer, BLOCK_START + 0, 24)
+	buffer.writeu8(SendBuffer, BLOCK_START + 0, 25)
 	buffer.writeu16(SendBuffer, BLOCK_START + 1, Value)
 end
 
@@ -781,6 +788,9 @@ if not RunService:IsRunning() then
 	},
 	DustCooldown = {
 		On = NOOP
+	},
+	EnterHub = {
+		Fire = NOOP
 	},
 	EnterStar = {
 		Fire = NOOP
@@ -985,16 +995,16 @@ Reliable.OnClientEvent:Connect(function(Buffer: buffer, Instances: {Instance})
 				end
 				table.insert(Queue.Reliable[19], {Value} :: {any})
 			end
-		elseif Index == 21 then
+		elseif Index == 22 then
 			local Value: number = SerdesFunctions.ReadEVENT_EnterDenied()
-			if Events.Reliable[21] ~= nil then
+			if Events.Reliable[22] ~= nil then
 				SerdesEvent = "EnterDenied"
-				Events.Reliable[21](Value)
+				Events.Reliable[22](Value)
 			else
-				if #Queue.Reliable[21] > 256 then
+				if #Queue.Reliable[22] > 256 then
 					warn("[Blink]: Event queue of \"EnterDenied\" exceeded 256, did you forget to implement a listener?")
 				end
-				table.insert(Queue.Reliable[21], {Value} :: {any})
+				table.insert(Queue.Reliable[22], {Value} :: {any})
 			end
 		end
 	end
@@ -1277,6 +1287,11 @@ local Returns = table.freeze({
 			end
 		end
 	},
+	EnterHub = {
+		Fire = function(Value: number): ()
+			SerdesFunctions.WriteEVENT_EnterHub(Value)
+		end
+	},
 	EnterStar = {
 		Fire = function(Value: { cx: number, cy: number, cz: number }): ()
 			SerdesFunctions.WriteEVENT_EnterStar(Value)
@@ -1284,14 +1299,14 @@ local Returns = table.freeze({
 	},
 	EnterDenied = {
 		On = function(Listener: (Value: number) -> ()): () -> ()
-			Events.Reliable[21] = Listener
-			for Index, Arguments in Queue.Reliable[21] do
+			Events.Reliable[22] = Listener
+			for Index, Arguments in Queue.Reliable[22] do
 				Listener(table.unpack(Arguments))
 			end
-			Queue.Reliable[21] = {}
+			Queue.Reliable[22] = {}
 			return function (): ()
-				if Events.Reliable[21] == Listener then
-					Events.Reliable[21] = nil
+				if Events.Reliable[22] == Listener then
+					Events.Reliable[22] = nil
 				end
 			end
 		end

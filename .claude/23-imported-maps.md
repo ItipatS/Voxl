@@ -5,7 +5,7 @@
 A star's world is normally *rolled* — a seed plus a biome mix, generated identically
 on server and client (doc 21). This doc adds the second kind: a **baked world**,
 imported from a real Minecraft save. The first one is `FantasyMedieval` — the
-*Fantasy Medieval 1.21.4* map — reachable as the **landmark star "Aldermoor"**.
+*Fantasy Medieval 1.21.4* map — reachable from any of the five **hub-towns**.
 
 Companion docs: **23a** (block coverage — the generated inventory of what an
 imported map actually needs), 16 (engine baseline — the layer rules this obeys),
@@ -19,9 +19,11 @@ The explore-and-claim universe is procedural on purpose: unlimited stars cost
 almost nothing because a world is *seed + edits*. A baked world breaks that — it
 IS bytes. So it is deliberately rare and deliberately special:
 
-- **Landmarks are fixtures, not frontier.** A landmark star always occupies its
-  slot. It ignores the weekly reshuffle and the density roll. It is the same place
-  for everyone, every week — somewhere rather than anywhere.
+- **It belongs on a HUB, not on the frontier.** The five hub-towns are already the
+  fixed geography: always there, same for everyone, never reshuffled. That
+  permanence is exactly what justifies baking static data for one. A frontier star
+  has to stay a seed, because there are unlimited numbers of them — pinning a
+  hand-authored world inside a generator built to reshuffle would be fighting it.
 - **Everything else is unchanged.** A baked star is still bounded, still
   server-authoritative, still editable, and its edits still persist through the
   same `WorldDiff` / `WorldStore` path as any other star. Baking replaces where
@@ -267,7 +269,7 @@ Pure Node, no dependencies — Anvil is zlib + NBT, both built in.
 | block coverage | 98.6% of blocks in the shell; 147 Voxl blocks used, of 189 defined (doc 23a) |
 | Voxl y | 19 … 250; typical column top 92, mesher span ~40 |
 | spawn | baked in: block (−5, 79, 3), picked as dry + flat + as central as possible |
-| star | landmark slot `{3, 0, 0}` ≈ 28k studs out — outside the maw void, near the starter ring |
+| reachable from | all five hub-towns on the 30k constellation ring (`std/constellation` HUBS) |
 
 **Verified:** every sampled column's top is exact, every shell block matches the
 Minecraft source run for run, nothing floats above a column top, the island beneath

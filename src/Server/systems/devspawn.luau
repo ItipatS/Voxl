@@ -15,9 +15,9 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
 
-local universe = require(ReplicatedStorage.std.universe)
+local constellation = require(ReplicatedStorage.std.constellation)
 
--- Name of a landmark from std/universe LANDMARKS, or nil for the authored spawn.
+-- Name of a hub-town from std/constellation HUBS, or nil for the normal spawn.
 local TARGET: string? = "Aldermoor"
 
 -- Where to stand relative to the star CENTRE. The orb is STAR_SIZE 2047 across, so
@@ -25,20 +25,19 @@ local TARGET: string? = "Aldermoor"
 -- the client's 1500-stud prompt range, rather than inside the glow.
 local OFFSET = Vector3.new(0, 400, 1350)
 
-local function landmarkPos(name: string): Vector3?
-	for _, L in universe.LANDMARKS do
-		if L.name == name then
-			local star = universe.landmarkAt(L.slot[1], L.slot[2], L.slot[3])
-			return star and star.pos or nil
+local function hubPos(name: string): Vector3?
+	for _, h in constellation.HUBS do
+		if h.name == name then
+			return h.pos
 		end
 	end
 	return nil
 end
 
 if TARGET then
-	local pos = landmarkPos(TARGET)
+	local pos = hubPos(TARGET)
 	if not pos then
-		warn(`[devspawn] no landmark named "{TARGET}" — leaving the authored spawn alone`)
+		warn(`[devspawn] no hub named "{TARGET}" — leaving the normal spawn alone`)
 	else
 		local spawn = Workspace:FindFirstChildWhichIsA("SpawnLocation")
 		if not spawn then

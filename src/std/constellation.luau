@@ -65,14 +65,62 @@ M.VOID_RADIUS = M.BLACKHOLE.radius + 2000 -- 14000
 --     Lower proxyDist if particles still cull; it does NOT change how big the maw looks — tune
 --     baseScale for that. [TUNE]
 local PROXY_DIST = 18000
+
+-- ===== THE FIVE HUB-TOWNS =====
+-- These are the fixed points of the universe: always here, same for everyone, never
+-- reshuffled. That permanence is what makes it worth BAKING a hand-built world for
+-- one — static geography deserves static data (doc 23) — where a frontier star has
+-- to stay a seed because there are unlimited numbers of them.
+--
+-- `map` names a baked world under ServerStorage.MapData; a hub with no `map` falls
+-- back to the rolled biome mix in `biomes`. All five point at the imported town for
+-- now, so any hub is a way in to test it; they get their own worlds as more are
+-- imported. `index` is what the client sends to enter, so the ORDER is load-bearing.
+export type Hub = {
+	index: number,
+	name: string,
+	pos: Vector3,
+	template: string, -- art in ReplicatedStorage.Assets
+	map: string?,
+	biomes: { { type: string, tier: number } },
+}
+
+local HUB_DEFS = {
+	{ name = "Aldermoor", template = "ForestStar", types = { "Flora", "Stone", "Bog" } },
+	{ name = "Dunhollow", template = "DesertStar", types = { "Sand", "Stone", "Flora" } },
+	{ name = "Cragfell", template = "MountainStar", types = { "Stone", "Frost", "Flora" } },
+	{ name = "Greenbarrow", template = "HillStar", types = { "Flora", "Sand", "Stone" } },
+	{ name = "Mirefen", template = "SwampStar", types = { "Bog", "Flora", "Frost" } },
+}
+
+M.HUBS = {} :: { Hub }
+for i, d in HUB_DEFS do
+	local biomes = {}
+	for j, t in d.types do
+		biomes[j] = { type = t, tier = if j == 1 then 2 else 1 } -- hubs are mostly-T1 trailheads
+	end
+	M.HUBS[i] = {
+		index = i,
+		name = d.name,
+		pos = STARTER_STARS[i],
+		template = d.template,
+		map = "FantasyMedieval", -- [TUNE] one imported town, shared by all five for now
+		biomes = biomes,
+	}
+end
+
+function M.hub(index: number): Hub?
+	return M.HUBS[index]
+end
+
+-- Landmark parallax proxies = the maw plus every hub, so the proxy list can't drift
+-- out of step with the hub list.
 M.LANDMARKS = {
 	{ template = "BlackHole", pos = CENTER, baseScale = 50, proxyDist = 100 },
-	{ template = "ForestStar", pos = STARTER_STARS[1], baseScale = 6, proxyDist = PROXY_DIST },
-	{ template = "DesertStar", pos = STARTER_STARS[2], baseScale = 6, proxyDist = PROXY_DIST },
-	{ template = "MountainStar", pos = STARTER_STARS[3], baseScale = 6, proxyDist = PROXY_DIST },
-	{ template = "HillStar", pos = STARTER_STARS[4], baseScale = 6, proxyDist = PROXY_DIST },
-	{ template = "SwampStar", pos = STARTER_STARS[5], baseScale = 6, proxyDist = PROXY_DIST },
 }
+for _, h in M.HUBS do
+	table.insert(M.LANDMARKS, { template = h.template, pos = h.pos, baseScale = 6, proxyDist = PROXY_DIST })
+end
 
 -- True if `pos` is far enough from every starter star to plant an island.
 -- (Island-vs-island spacing is checked by the planting system against the manifest.)

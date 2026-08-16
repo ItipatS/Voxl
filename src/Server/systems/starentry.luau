@@ -12,6 +12,7 @@ local TeleportService = game:GetService("TeleportService")
 
 local blink = require(ServerScriptService.ServerNet)
 local universe = require(ReplicatedStorage.std.universe)
+local constellation = require(ReplicatedStorage.std.constellation)
 local placemode = require(ReplicatedStorage.std.placemode)
 
 local STAR_WORLD_RADIUS = 96 -- bounded-world island radius in blocks [TUNE]
@@ -31,6 +32,42 @@ local DENY_NO_STAR = 0
 local DENY_TOO_FAR = 1
 local DENY_TELEPORT = 2
 
+-- Entering a HUB-TOWN. The five hubs are fixed constellation geography, not universe
+-- slots, so they have their own path: the client sends an index, the server owns
+-- where that hub is and what world it holds. A hub with a `map` sends the client into
+-- a BAKED world (doc 23) instead of a rolled one.
+blink.EnterHub.On(function(plr: Player, index: number)
+	local hub = constellation.hub(index)
+	if not hub then
+		blink.EnterDenied.Fire(plr, DENY_NO_STAR)
+		return
+	end
+	local pp = rootPos(plr)
+	if not pp or (hub.pos - pp).Magnitude > ENTER_RADIUS then
+		blink.EnterDenied.Fire(plr, DENY_TOO_FAR)
+		return
+	end
+
+	local opts = Instance.new("TeleportOptions")
+	opts:SetTeleportData({
+		-- A hub is permanent, so its seed is its index rather than a weekly roll —
+		-- the same hub generates the same world every time even without a baked map.
+		starSeed = 1000 + index,
+		starRadius = STAR_WORLD_RADIUS,
+		starName = hub.name,
+		starTypes = { hub.biomes[1].type, hub.biomes[2].type, hub.biomes[3].type },
+		starBiomes = hub.biomes,
+		starMap = hub.map,
+	})
+	local ok, err = pcall(function()
+		TeleportService:TeleportAsync(placemode.RESOURCE_PLACE_ID, { plr }, opts)
+	end)
+	if not ok then
+		warn(`[starentry] hub teleport for {plr.Name} failed (Studio/unpublished?): {err}`)
+		blink.EnterDenied.Fire(plr, DENY_TELEPORT)
+	end
+end)
+
 blink.EnterStar.On(function(plr: Player, slot)
 	local star = universe.starAt(slot.cx, slot.cy, slot.cz, universe.currentWeek(os.time()))
 	if not star then
@@ -47,15 +84,12 @@ blink.EnterStar.On(function(plr: Player, slot)
 	-- Carry the full biome MIX (per-type tier) so the star world generates the exact rolled
 	-- ladder rungs, not a tier-less approximation. starName drives the loading card; starTypes
 	-- kept for older-client tolerance.
-	-- A LANDMARK star (doc 23) carries a baked world: `starMap` names it and the star's
-	-- own radius wins, since an imported map's footprint isn't ours to choose.
 	opts:SetTeleportData({
 		starSeed = star.seed,
-		starRadius = star.radius or STAR_WORLD_RADIUS,
+		starRadius = STAR_WORLD_RADIUS,
 		starName = star.name,
 		starTypes = star.types,
 		starBiomes = star.biomes,
-		starMap = star.map,
 	})
 	local ok, err = pcall(function()
 		TeleportService:TeleportAsync(placemode.RESOURCE_PLACE_ID, { plr }, opts)

@@ -51,6 +51,30 @@ local function beginTravel(star: universe.Star)
 	end)
 end
 
+-- Same iris/loading flow as a frontier star, but keyed by hub index rather than slot.
+local function beginHubTravel(hub: constellation.Hub)
+	if traveling then
+		return
+	end
+	traveling = true
+	local types = {}
+	for i, b in hub.biomes do
+		types[i] = b.type
+	end
+	local info = { name = hub.name, types = types, subtitle = "Traveling…", primary = types[1] }
+	pcall(function()
+		TeleportService:SetTeleportGui(transition.buildTeleportGui(info))
+	end)
+	transition.close(info)
+	blink.EnterHub.Fire(hub.index)
+	task.delay(TRAVEL_TIMEOUT, function()
+		if traveling then
+			traveling = false
+			transition.open()
+		end
+	end)
+end
+
 blink.EnterDenied.On(function()
 	if not traveling then
 		return
@@ -186,7 +210,6 @@ local function makeStar(star: universe.Star): Instance
 	root.Name = `Star_{star.slot[1]}_{star.slot[2]}_{star.slot[3]}`
 
 	-- Approach preview: auto-hidden past MaxDistance (no per-frame visibility check).
-	local isLandmark = star.map ~= nil
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "Approach"
 	bb.Adornee = part
@@ -194,11 +217,11 @@ local function makeStar(star: universe.Star): Instance
 	bb.StudsOffsetWorldSpace = Vector3.new(0, STAR_SIZE * 0.65, 0)
 	bb.AlwaysOnTop = true
 	bb.LightInfluence = 0
-	bb.MaxDistance = if isLandmark then LANDMARK_RADIUS else APPROACH_RADIUS
+	bb.MaxDistance = APPROACH_RADIUS
 	bb.Parent = part
 
 	local nameLbl = label(bb, 0, 0.45, typeColor)
-	nameLbl.Text = if isLandmark then `◆ {star.name}` else star.name
+	nameLbl.Text = star.name
 	local typesLbl = label(bb, 0.47, 0.28, Color3.fromRGB(210, 220, 235))
 	typesLbl.Text = table.concat(star.types, "  ·  ")
 
@@ -263,16 +286,8 @@ local function refreshCells(cx: number, cy: number, cz: number)
 			end
 		end
 	end
-	-- Landmarks stay loaded wherever you are. Raising their label's MaxDistance is
-	-- pointless on its own: a slot outside the render ring has no orb to label, so
-	-- the thing you're meant to navigate toward simply wouldn't exist yet. There
-	-- are only a handful of them, so this costs one orb each.
-	for _, L in universe.LANDMARKS do
-		local kx, ky, kz = L.slot[1], L.slot[2], L.slot[3]
-		want[cellKey(kx, ky, kz)] = true
-		loadCell(kx, ky, kz)
-	end
-
+	-- The hubs need no special case here: they aren't universe slots at all, so
+	-- they're built once as signs and never stream in or out.
 	for key in cells do
 		if not want[key] then
 			unloadCell(key)
@@ -286,21 +301,26 @@ end
 -- adorned to one would inherit that lie and report a few hundred studs no matter
 -- where you were. So these are separate, real markers at the stars' TRUE positions
 -- — an invisible anchor each, carrying the same billboard the frontier stars use.
-local function starterName(template: string): string
-	-- "MountainStar" -> "Mountain Star" (proper hub-town names arrive with the
-	-- naming pass — DESIGN.md)
-	return (template:gsub("(%l)(%u)", "%1 %2"))
-end
 
 local function makeSigns()
 	local signs = Instance.new("Folder")
 	signs.Name = "Signs"
 	signs.Parent = folder
 
-	for _, L in constellation.LANDMARKS do
-		local isMaw = L.template == "BlackHole"
+	-- The maw first, then a sign per hub. Hub signs also carry the Enter prompt: the
+	-- proxy the hub is DRAWN as is camera-locked, so a prompt on it would trigger from
+	-- anywhere — the real anchor is the only honest place to put it.
+	local marks: { { pos: Vector3, name: string, maw: boolean, hub: constellation.Hub? } } = {
+		{ pos = constellation.CENTER, name = "THE MAW", maw = true, hub = nil },
+	}
+	for _, h in constellation.HUBS do
+		table.insert(marks, { pos = h.pos, name = h.name, maw = false, hub = h })
+	end
+
+	for _, L in marks do
+		local isMaw = L.maw
 		local anchor = Instance.new("Part")
-		anchor.Name = `Sign_{L.template}`
+		anchor.Name = `Sign_{L.name}`
 		anchor.Anchored = true
 		anchor.CanCollide = false
 		anchor.CanQuery = false
@@ -323,12 +343,27 @@ local function makeSigns()
 
 		local tint = if isMaw then Color3.fromRGB(255, 120, 90) else Color3.fromRGB(255, 225, 150)
 		local nameLbl = label(bb, 0, 0.6, tint)
-		nameLbl.Text = if isMaw then "☀ THE MAW" else `★ {starterName(L.template)}`
+		nameLbl.Text = if isMaw then "☀ THE MAW" else `★ {L.name}`
 		local distLbl = label(bb, 0.62, 0.38, Color3.fromRGB(160, 175, 195))
 		distLbl.Text = ""
 		-- radius 0: for a hub or the maw the useful number is range to the point,
 		-- not to a surface (the proxy has no real one)
 		tracked[#tracked + 1] = { label = distLbl, pos = L.pos, radius = 0 }
+
+		local hub = L.hub
+		if hub then
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Style = Enum.ProximityPromptStyle.Custom
+			prompt.ActionText = "Enter"
+			prompt.ObjectText = hub.name
+			prompt.HoldDuration = 0.4
+			prompt.MaxActivationDistance = ENTER_RADIUS
+			prompt.RequiresLineOfSight = false
+			prompt.Parent = anchor
+			prompt.Triggered:Connect(function()
+				beginHubTravel(hub)
+			end)
+		end
 	end
 end
 
