@@ -1,5 +1,8 @@
 --!strict
--- Lobby BGM: shuffle-cycle the SoundService.Musics playlist (cozy ambient/piano).
+-- BGM for BOTH places: shuffle-cycle the SoundService.Musics playlist (cozy
+-- ambient/piano). Nothing here is lobby-specific — it reads one authored playlist
+-- and has no idea where it is — so the star place runs the same module rather than
+-- a second copy of it.
 -- Client-side so each player gets their own shuffle. Each track FADES in, FADES out near
 -- its end, then there's a random SILENCE before the next — so it breathes instead of
 -- looping wall-to-wall. Respects each track's authored Volume as the fade-in target.
