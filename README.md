@@ -7,8 +7,7 @@ The interesting part isn't the game loop — it's that **the client renders the
 world and the server never holds a single terrain part.** Everything below
 follows from that.
 
-- Lobby: `roblox.com/games/126553668196124`
-- Star: `roblox.com/games/135120092161486`
+Demo - https://www.roblox.com/games/126553668196124/Voxlstar-Demo
 
 ---
 
