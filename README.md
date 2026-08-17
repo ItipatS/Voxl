@@ -8,7 +8,7 @@ world and the server never holds a single terrain part.** Everything below
 follows from that.
 
 Demo - https://www.roblox.com/games/126553668196124/Voxlstar-Demo
-
+- **Video:** [![Watch the video](https://img.youtube.com/vi/3KUbgd-ZSxI/0.jpg)](https://youtu.be/3KUbgd-ZSxI)
 ---
 
 ## The constraint that shapes everything
